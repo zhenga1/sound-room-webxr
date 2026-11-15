@@ -1,0 +1,19 @@
+{
+  "name": "sound-room-webxr",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 4174",
+    "build": "vite build && node scripts/copy-public.mjs",
+    "preview": "vite preview --host 127.0.0.1 --port 4174",
+    "check": "node --check src/app.js && node --check src/webxr.js && node --check src/public-audio.js && node --check src/xr-math.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "three": "0.183.0"
+  },
+  "devDependencies": {
+    "vite": "6.4.6"
+  }
+}

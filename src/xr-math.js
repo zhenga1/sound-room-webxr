@@ -1,0 +1,4 @@
+export function deadzone(value,threshold=.18){return Math.abs(value)<threshold?0:Math.sign(value)*(Math.abs(value)-threshold)/(1-threshold);}
+export function thumbstick(gamepad){const a=gamepad?.axes||[];return [deadzone(a.length>=4?a[2]:a[0]||0),deadzone(a.length>=4?a[3]:a[1]||0)];}
+export function validStroke(stroke){return stroke&&['#d6f48a','#8dc8e8','#f4b879','#f2a4cc','#ffffff'].includes(stroke.color)&&Number.isFinite(stroke.width)&&stroke.width>=.005&&stroke.width<=.05&&Array.isArray(stroke.points)&&stroke.points.length>=2&&stroke.points.length<=256&&stroke.points.every(p=>Array.isArray(p)&&p.length===3&&p.every(n=>Number.isFinite(n)&&Math.abs(n)<=12));}
+export function samplePoint(points,point,minDistance=.018,maxPoints=256){if(points.length>=maxPoints)return false;const last=points.at(-1);if(last&&Math.hypot(...point.map((v,i)=>v-last[i]))<minDistance)return false;points.push([...point]);return true;}
