@@ -1,3 +1,4 @@
+import {outdoorObjects} from './outdoor-objects.js';
 import * as THREE from 'three';
 import {thumbstick,samplePoint,validStroke} from './xr-math.js';
 import {controlPages} from './controls-guide.js';
@@ -150,6 +151,13 @@ export class BedroomXR {
       this.label('Recenter view & menu',0,-.29,2.15,.17,()=>this.showMenu());
       this.label('Undo ink',-.57,-.52,1.05,.14,()=>this.undo());
       this.label('Clear ink',.57,-.52,1.05,.14,()=>{for(const data of this.controls)if(data.stroke)this.finish(data);this.clearBackup=this.strokes.slice();this.strokes=[];this.rebuildInk();this.saveInk();});
+    }else if(this.getParadise?.()?.active){
+      const objects=this.getParadise().objects,pages=Math.ceil(outdoorObjects.length/6);
+      outdoorObjects.slice((this.menuPage%pages)*6,(this.menuPage%pages)*6+6).forEach((item,i)=>this.label('+ '+item.name,(i%2-.5)*1.12,.43-Math.floor(i/2)*.17,1.05,.14,()=>{objects.add(item.type);this.refreshMenu();}));
+      this.label('More objects',0,-.1,2.15,.13,()=>{this.menuPage=(this.menuPage+1)%pages;this.buildMenu();});
+      this.label('Move last here',-.57,-.3,1.05,.14,()=>{if(objects.selected)objects.moveHere(objects.selected.id);});
+      this.label('Remove last',.57,-.3,1.05,.14,()=>{if(objects.selected)objects.remove(objects.selected.id);this.buildMenu();});
+      this.label('Each object gets a SOUND mixer row',0,-.5,2.15,.14);
     }else{
       const page=this.catalog.slice(this.menuPage*6,this.menuPage*6+6);
       page.forEach((item,i)=>this.label('+ '+item.name,(i%2-.5)*1.12,.43-Math.floor(i/2)*.17,1.05,.14,()=>{

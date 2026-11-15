@@ -84,3 +84,7 @@ test('outdoor sound menu uses courtyard channels with working volume and mute',(
  let level=.5,muted=false;const ambience={channels:()=>[{id:'birds',label:'Garden birds',level,muted}],setChannel:(id,value)=>{assert.equal(id,'birds');level=value;},toggleChannel:()=>{muted=!muted;}};
  const app=setup({getParadise:()=>({active:true,ambience})});assert.equal(app.soundEntries()[0].outdoor,true);app.buttons.find(b=>b.userData.label==='+').userData.action();assert.equal(level,.6);app.buttons.find(b=>b.userData.label==='Mute').userData.action();assert.equal(muted,true);
 });
+
+test('outdoor objects tab adds outdoor sources without calling indoor catalog',()=>{
+ let added=null;const objects={add:type=>{added=type;},selected:null};const ambience={channels:()=>[]};const app=setup({getParadise:()=>({active:true,objects,ambience})});app.panel='objects';app.buildMenu();app.buttons.find(b=>b.userData.label==='+ Small fountain').userData.action();assert.equal(added,'fountain');assert.ok(app.buttons.some(b=>b.userData.label==='Move last here'));
+});

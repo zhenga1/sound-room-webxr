@@ -80,15 +80,15 @@ export const outdoorChannels=[
   {id:'insects',label:'Meadow crickets',level:.3}
 ];
 export class ParadiseAmbience{
-  constructor(){this.ctx=null;this.nodes=[];this.active=false;this.volume=1;this.buses=new Map();this.observers=new Set();this.mix=new Map(outdoorChannels.map(item=>[item.id,{level:item.level,muted:false}]));
+  constructor(){this.ctx=null;this.nodes=[];this.instances=[];this.serial=0;this.active=false;this.volume=1;this.buses=new Map();this.observers=new Set();this.mix=new Map(outdoorChannels.map(item=>[item.id,{level:item.level,muted:false}]));
     try{const saved=JSON.parse(localStorage.getItem('inner-eden-mix-v1'));for(const item of outdoorChannels){const value=saved?.[item.id];if(value&&Number.isFinite(value.level)&&typeof value.muted==='boolean')this.mix.set(item.id,{level:THREE.MathUtils.clamp(value.level,0,1),muted:value.muted});}}catch{}
   }
-  channels(){return outdoorChannels.map(item=>({...item,...this.mix.get(item.id)}));}
+  channels(){return [...outdoorChannels,...this.instances].map(item=>({...item,...this.mix.get(item.id)}));}
   channelGain(id){const item=this.mix.get(id);return item&&!item.muted?item.level*2:0;}
   setChannel(id,level){const item=this.mix.get(id);if(!item||!Number.isFinite(level))return;item.level=THREE.MathUtils.clamp(level,0,1);this.changed();}
   toggleChannel(id){const item=this.mix.get(id);if(item){item.muted=!item.muted;this.changed();}}
   muteAll(muted=true){for(const item of this.mix.values())item.muted=muted;this.changed();}
-  resetMix(){this.mix=new Map(outdoorChannels.map(item=>[item.id,{level:item.level,muted:false}]));this.changed();}
+  resetMix(){for(const item of [...outdoorChannels,...this.instances])this.mix.set(item.id,{level:item.level,muted:false});this.changed();}
   subscribe(callback){this.observers.add(callback);return()=>this.observers.delete(callback);}
   changed(){try{localStorage.setItem('inner-eden-mix-v1',JSON.stringify(Object.fromEntries(this.mix)));}catch{}this.applyMix();for(const callback of this.observers)callback();}
   applyMix(){if(!this.ctx)return;for(const [id,bus] of this.buses)bus.gain.setTargetAtTime(this.channelGain(id),this.ctx.currentTime,.06);}
@@ -96,21 +96,29 @@ export class ParadiseAmbience{
   async start(){
     if(this.ctx){await this.ctx.resume();return;}const ctx=this.ctx=new AudioContext();await ctx.resume();
     this.master=ctx.createGain();this.master.gain.value=0;this.master.connect(ctx.destination);
-    for(const item of outdoorChannels){const bus=ctx.createGain();bus.gain.value=this.channelGain(item.id);bus.connect(this.master);this.buses.set(item.id,bus);}
-    const buffer=ctx.createBuffer(1,ctx.sampleRate*8,ctx.sampleRate),data=buffer.getChannelData(0);let seed=81;for(let i=0;i<data.length;i++){seed=(seed*1664525+1013904223)>>>0;const fade=Math.min(1,i/(ctx.sampleRate*.01),(data.length-i-1)/(ctx.sampleRate*.01));data[i]=((seed/4294967296)*2-1)*fade;}
+    for(const item of [...outdoorChannels,...this.instances]){const bus=ctx.createGain();bus.gain.value=this.channelGain(item.id);bus.connect(this.master);this.buses.set(item.id,bus);}
+    const buffer=this.noiseBuffer=ctx.createBuffer(1,ctx.sampleRate*8,ctx.sampleRate),data=buffer.getChannelData(0);let seed=81;for(let i=0;i<data.length;i++){seed=(seed*1664525+1013904223)>>>0;const fade=Math.min(1,i/(ctx.sampleRate*.01),(data.length-i-1)/(ctx.sampleRate*.01));data[i]=((seed/4294967296)*2-1)*fade;}
     for(const [index,definition] of courtyardSounds.entries()){
       const {x,y,z,frequency,type}=definition;
       const source=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain(),pan=ctx.createPanner();source.buffer=buffer;source.loop=true;filter.type=type;filter.frequency.value=frequency;filter.Q.value=.6;gain.gain.value=0;pan.panningModel='HRTF';pan.distanceModel='inverse';pan.refDistance=definition.id==='fountain'?2:3;pan.maxDistance=60;pan.rolloffFactor=1;pan.positionX.value=x;pan.positionY.value=y;pan.positionZ.value=z;source.connect(filter).connect(gain).connect(pan).connect(this.buses.get(definition.id));source.start(0,index*.73%8);this.nodes.push({...definition,source,gain,filter,pan});
     }
+    for(const item of this.instances)this.connectInstance(item);
   }
+  addInstance(soundId,position){const definition=outdoorChannels.find(item=>item.id===soundId);if(!definition||this.instances.length>=16)return null;
+    const id='placed-'+(++this.serial),item={id,soundId,label:definition.label+' #'+this.serial,level:.65,x:position.x,y:position.y??1,z:position.z};this.instances.push(item);this.mix.set(id,{level:item.level,muted:false});if(this.master)this.connectInstance(item);this.changed();return item;
+  }
+  connectInstance(item){const ctx=this.ctx;if(!this.buses.has(item.id)){const bus=ctx.createGain();bus.gain.value=this.channelGain(item.id);bus.connect(this.master);this.buses.set(item.id,bus);}const definition=courtyardSounds.find(source=>source.id===item.soundId);if(!definition)return;
+    const source=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain(),pan=ctx.createPanner();source.buffer=this.noiseBuffer;source.loop=true;filter.type=definition.type;filter.frequency.value=definition.frequency;filter.Q.value=.6;gain.gain.value=0;pan.panningModel='HRTF';pan.distanceModel='inverse';pan.refDistance=2;pan.rolloffFactor=1;pan.positionX.value=item.x;pan.positionY.value=item.y;pan.positionZ.value=item.z;source.connect(filter).connect(gain).connect(pan).connect(this.buses.get(item.id));source.start();this.nodes.push({...item,source,filter,gain,pan});
+  }
+  removeInstance(id){const index=this.instances.findIndex(item=>item.id===id);if(index<0)return;this.instances.splice(index,1);for(const node of this.nodes.filter(item=>item.id===id)){node.source.stop();node.source.disconnect();node.filter.disconnect();node.gain.disconnect();node.pan.disconnect();}this.nodes=this.nodes.filter(item=>item.id!==id);this.buses.get(id)?.disconnect();this.buses.delete(id);this.mix.delete(id);this.changed();}
   update(camera,settings,time){if(!this.ctx||!this.master)return;const ctx=this.ctx,volume=this.active?1:0;
     this.master.gain.setTargetAtTime(volume*this.volume,ctx.currentTime,.2);
     this.nodes.forEach(node=>{
-      let texture;
-      if(node.id==='shore')texture=.075+.025*Math.sin(time*.45);
-      else if(node.id==='stream')texture=.045+settings.nature*.045;
-      else if(node.id==='wind')texture=.025+settings.energy*.055;
-      else if(node.id==='fountain')texture=(.10+settings.energy*.035)*(.8+.12*Math.sin(time*3.7)+.08*Math.sin(time*8.3));
+      let texture;const kind=node.soundId||node.id;
+      if(kind==='shore')texture=.075+.025*Math.sin(time*.45);
+      else if(kind==='stream')texture=.045+settings.nature*.045;
+      else if(kind==='wind')texture=.025+settings.energy*.055;
+      else if(kind==='fountain')texture=(.10+settings.energy*.035)*(.8+.12*Math.sin(time*3.7)+.08*Math.sin(time*8.3));
       else{const phase=node.x+node.z;const gust=.45+.2*Math.sin(time*(.7+settings.energy)+phase)+.15*Math.sin(time*4.7+phase);texture=(.025+settings.nature*.04+settings.energy*.04)*gust;}
       node.gain.gain.setTargetAtTime(volume*texture,ctx.currentTime,.2);
     });
@@ -118,10 +126,12 @@ export class ParadiseAmbience{
     if(this.active&&ctx.currentTime>=(this.nextBird||0)){this.tone(1800+settings.energy*900,4,17,.012+settings.energy*.012,true);this.nextBird=ctx.currentTime+2+(1-settings.energy)*5;}
     if(this.active&&settings.dreaminess>.3&&ctx.currentTime>=(this.nextChime||0)){const notes=[261.63,329.63,392,523.25,659.25];this.tone(notes[Math.floor(time/5)%notes.length],-8,21,.014,false);this.nextChime=ctx.currentTime+5;}
     if(this.active&&settings.nature>.35&&ctx.currentTime>=(this.nextInsect||0)){this.tone(3400+Math.sin(time)*250,5,14,.006,'insect');this.nextInsect=ctx.currentTime+1.8+(1-settings.energy)*2;}
+    for(const item of this.instances){if(!this.active||ctx.currentTime<(item.next||0))continue;
+      if(['birds','chimes','insects'].includes(item.soundId)){const kind=item.soundId==='birds'?true:item.soundId==='insects'?'insect':false;this.tone(item.soundId==='birds'?2300:item.soundId==='insects'?3500:523.25,item.x,item.z,item.soundId==='insects'?.008:.025,kind,item.id,item.y);item.next=ctx.currentTime+(item.soundId==='chimes'?4:2);}}
     const p=new THREE.Vector3(),q=new THREE.Quaternion();camera.getWorldPosition(p);camera.getWorldQuaternion(q);const f=new THREE.Vector3(0,0,-1).applyQuaternion(q),u=new THREE.Vector3(0,1,0).applyQuaternion(q),listener=ctx.listener;
     if(listener.positionX){listener.positionX.value=p.x;listener.positionY.value=p.y;listener.positionZ.value=p.z;listener.forwardX.value=f.x;listener.forwardY.value=f.y;listener.forwardZ.value=f.z;listener.upX.value=u.x;listener.upY.value=u.y;listener.upZ.value=u.z;}
   }
-  tone(frequency,x,z,volume,kind){const ctx=this.ctx,osc=ctx.createOscillator(),gain=ctx.createGain(),pan=ctx.createPanner(),t=ctx.currentTime,duration=kind==='drop'?.18:kind==='insect'?.4:kind?.25:2;osc.type='sine';osc.frequency.setValueAtTime(frequency,t);if(kind)osc.frequency.exponentialRampToValueAtTime(frequency*(kind==='drop'?.48:1.5),t+duration*.7);gain.gain.setValueAtTime(.0001,t);gain.gain.exponentialRampToValueAtTime(volume,t+.012);gain.gain.exponentialRampToValueAtTime(.0001,t+duration);pan.panningModel='HRTF';pan.refDistance=3;pan.positionX.value=x;pan.positionY.value=kind==='drop'?.8:2;pan.positionZ.value=z;const id=kind==='drop'?'fountain':kind==='insect'?'insects':kind?'birds':'chimes';osc.connect(gain).connect(pan).connect(this.buses.get(id)||this.master);osc.start();osc.stop(t+duration);osc.onended=()=>{osc.disconnect();gain.disconnect();pan.disconnect();};}
+  tone(frequency,x,z,volume,kind,busId=null,height=null){const ctx=this.ctx,osc=ctx.createOscillator(),gain=ctx.createGain(),pan=ctx.createPanner(),t=ctx.currentTime,duration=kind==='drop'?.18:kind==='insect'?.4:kind?.25:2;osc.type='sine';osc.frequency.setValueAtTime(frequency,t);if(kind)osc.frequency.exponentialRampToValueAtTime(frequency*(kind==='drop'?.48:1.5),t+duration*.7);gain.gain.setValueAtTime(.0001,t);gain.gain.exponentialRampToValueAtTime(volume,t+.012);gain.gain.exponentialRampToValueAtTime(.0001,t+duration);pan.panningModel='HRTF';pan.refDistance=3;pan.positionX.value=x;pan.positionY.value=height??(kind==='drop'?.8:2);pan.positionZ.value=z;const id=kind==='drop'?'fountain':kind==='insect'?'insects':kind?'birds':'chimes';osc.connect(gain).connect(pan).connect(this.buses.get(busId||id)||this.master);osc.start();osc.stop(t+duration);osc.onended=()=>{osc.disconnect();gain.disconnect();pan.disconnect();};}
 }
 export function createDoor(root,{x=0,z=-2,title='Return to bedroom',onOpen=()=>{}}={}){
   const group=new THREE.Group();group.position.set(x,0,z);root.add(group);const wood=new THREE.MeshStandardMaterial({color:'#b09266'}),leaf=new THREE.Group();leaf.position.x=-.65;group.add(leaf);

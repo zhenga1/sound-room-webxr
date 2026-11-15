@@ -1,3 +1,4 @@
+import {OutdoorObjects} from '../src/outdoor-objects.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
@@ -26,4 +27,12 @@ test('outdoor mixer controls separate buses and preserves volume through mute an
  audio.setChannel('fountain',.25);assert.equal(audio.buses.get('fountain').gain.value,.5);audio.toggleChannel('fountain');assert.equal(audio.buses.get('fountain').gain.value,0);assert.equal(audio.channels().find(c=>c.id==='fountain').level,.25);
  audio.active=true;audio.update(new THREE.PerspectiveCamera(),{energy:1,nature:1,dreaminess:1},1);assert.equal(audio.buses.get('fountain').gain.value,0);audio.toggleChannel('fountain');assert.equal(audio.buses.get('fountain').gain.value,.5);
  audio.muteAll(true);assert.ok(audio.channels().every(c=>c.muted));audio.muteAll(false);assert.ok(audio.channels().every(c=>!c.muted));audio.setChannel('birds',2);assert.equal(audio.channels().find(c=>c.id==='birds').level,1);audio.resetMix();assert.equal(audio.channels().find(c=>c.id==='birds').level,.8);assert.ok(changes>5);unsubscribe();
+});
+
+test('added objects have independent voices, bounded positions, relocation and complete removal',async()=>{
+ globalThis.AudioContext=Context;const audio=new ParadiseAmbience(),root=new THREE.Group(),camera=new THREE.PerspectiveCamera();camera.position.set(0,1.6,5);camera.updateMatrixWorld();const objects=new OutdoorObjects(root,audio,()=>camera);
+ const first=objects.add('fountain',{x:0,z:4}),second=objects.add('fountain',{x:3,z:6});await audio.start();assert.notEqual(first.id,second.id);assert.equal(audio.instances.length,2);assert.equal(root.children.length,2);assert.equal(audio.nodes.filter(n=>n.soundId==='fountain').length,2);
+ audio.setChannel(first.id,.2);audio.toggleChannel(first.id);assert.equal(audio.buses.get(first.id).gain.value,0);assert.ok(audio.buses.get(second.id).gain.value>0);camera.position.x=2;camera.updateMatrixWorld();objects.moveHere(first.id);assert.equal(first.group.position.x,2);assert.equal(audio.nodes.find(n=>n.id===first.id).pan.positionX.value,2);
+ const node=audio.nodes.find(n=>n.id===first.id);objects.remove(first.id);assert.equal(node.pan.disconnected,true);assert.equal(audio.channels().some(c=>c.id===first.id),false);assert.equal(root.children.length,1);
+ const birds=objects.add('birdhouse',{x:100,z:100});assert.ok(Math.abs(birds.group.position.x)<=13);assert.ok(audio.buses.has(birds.id));for(let i=0;i<30;i++)objects.add('tree');assert.equal(objects.items.length,16);assert.equal(objects.add('tree'),null);
 });
