@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 export const moods={calm:{energy:.2,nature:.6,dreaminess:.2},wonder:{energy:.45,nature:.95,dreaminess:.85},freedom:{energy:.8,nature:.45,dreaminess:.5}};
+export const livelyDefaults={energy:.68,nature:.9,dreaminess:.42};
 export function personalize(feeling='',place=''){
   const text=(feeling+' '+place).toLowerCase();const result={...( /adventur|free|energet|explor/.test(text)?moods.freedom:/wonder|curious|inspir|magic/.test(text)?moods.wonder:moods.calm)};
   if(/garden|forest|grove|lush/.test(text))result.nature=.95;if(/beach|shore|ocean/.test(text))result.nature=.25;if(/glow|float|imaginar|dream|surreal/.test(text))result.dreaminess=.9;return result;
@@ -40,7 +41,7 @@ export function buildParadise(scene,root){
   const sunlight=new THREE.DirectionalLight('#ffedcb',2.1);sunlight.position.set(-10,15,3);additions.add(sunlight);
   function sign(text,x,y,z){const canvas=document.createElement('canvas');canvas.width=768;canvas.height=128;const context=canvas.getContext('2d');context.fillStyle='#214b44';context.fillRect(0,0,768,128);context.fillStyle='#f4f2dd';context.font='36px system-ui';context.textAlign='center';context.fillText(text,384,78);const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;const board=mesh(new THREE.PlaneGeometry(2.4,.4),new THREE.MeshBasicMaterial({map:texture,side:THREE.DoubleSide}),x,y,z);board.rotation.y=Math.PI;}
   sign('THE SHORE - rest & spaciousness',-9,1.6,2);sign('THE GROVE - curiosity & wonder',4,1.6,11.5);sign('THE OVERLOOK - freedom & possibility',-8,2.4,18);
-  let settings={...moods.calm},target={...settings};
+  let settings={...livelyDefaults},target={...settings};
   return {root:additions,target,
     set(values){for(const key of ['energy','nature','dreaminess'])if(Number.isFinite(values[key]))target[key]=THREE.MathUtils.clamp(values[key],0,1);},
     update(dt,time){
@@ -66,16 +67,40 @@ export const courtyardSounds=[
   {id:'back-leaves',label:'Back hedge rustling',x:0,y:.8,z:11,frequency:1900,type:'bandpass'},
   {id:'grove-leaves',label:'Grove canopy rustling',x:4,y:2.5,z:17,frequency:2800,type:'bandpass'}
 ];
+export const outdoorChannels=[
+  {id:'fountain',label:'Fountain & splashes',level:.65},
+  {id:'birds',label:'Garden birds',level:.8},
+  {id:'entrance-leaves',label:'Entrance leaves',level:.6},
+  {id:'back-leaves',label:'Back hedge',level:.55},
+  {id:'grove-leaves',label:'Tree canopy',level:.65},
+  {id:'stream',label:'Grove stream',level:.6},
+  {id:'shore',label:'Ocean waves',level:.5},
+  {id:'wind',label:'Soft breeze',level:.3},
+  {id:'chimes',label:'Gentle chimes',level:.45},
+  {id:'insects',label:'Meadow crickets',level:.3}
+];
 export class ParadiseAmbience{
-  constructor(){this.ctx=null;this.nodes=[];this.active=false;this.volume=1;}
+  constructor(){this.ctx=null;this.nodes=[];this.active=false;this.volume=1;this.buses=new Map();this.observers=new Set();this.mix=new Map(outdoorChannels.map(item=>[item.id,{level:item.level,muted:false}]));
+    try{const saved=JSON.parse(localStorage.getItem('inner-eden-mix-v1'));for(const item of outdoorChannels){const value=saved?.[item.id];if(value&&Number.isFinite(value.level)&&typeof value.muted==='boolean')this.mix.set(item.id,{level:THREE.MathUtils.clamp(value.level,0,1),muted:value.muted});}}catch{}
+  }
+  channels(){return outdoorChannels.map(item=>({...item,...this.mix.get(item.id)}));}
+  channelGain(id){const item=this.mix.get(id);return item&&!item.muted?item.level*2:0;}
+  setChannel(id,level){const item=this.mix.get(id);if(!item||!Number.isFinite(level))return;item.level=THREE.MathUtils.clamp(level,0,1);this.changed();}
+  toggleChannel(id){const item=this.mix.get(id);if(item){item.muted=!item.muted;this.changed();}}
+  muteAll(muted=true){for(const item of this.mix.values())item.muted=muted;this.changed();}
+  resetMix(){this.mix=new Map(outdoorChannels.map(item=>[item.id,{level:item.level,muted:false}]));this.changed();}
+  subscribe(callback){this.observers.add(callback);return()=>this.observers.delete(callback);}
+  changed(){try{localStorage.setItem('inner-eden-mix-v1',JSON.stringify(Object.fromEntries(this.mix)));}catch{}this.applyMix();for(const callback of this.observers)callback();}
+  applyMix(){if(!this.ctx)return;for(const [id,bus] of this.buses)bus.gain.setTargetAtTime(this.channelGain(id),this.ctx.currentTime,.06);}
   setMasterVolume(value){if(Number.isFinite(value))this.volume=THREE.MathUtils.clamp(value,0,2);}
   async start(){
     if(this.ctx){await this.ctx.resume();return;}const ctx=this.ctx=new AudioContext();await ctx.resume();
     this.master=ctx.createGain();this.master.gain.value=0;this.master.connect(ctx.destination);
+    for(const item of outdoorChannels){const bus=ctx.createGain();bus.gain.value=this.channelGain(item.id);bus.connect(this.master);this.buses.set(item.id,bus);}
     const buffer=ctx.createBuffer(1,ctx.sampleRate*8,ctx.sampleRate),data=buffer.getChannelData(0);let seed=81;for(let i=0;i<data.length;i++){seed=(seed*1664525+1013904223)>>>0;const fade=Math.min(1,i/(ctx.sampleRate*.01),(data.length-i-1)/(ctx.sampleRate*.01));data[i]=((seed/4294967296)*2-1)*fade;}
     for(const [index,definition] of courtyardSounds.entries()){
       const {x,y,z,frequency,type}=definition;
-      const source=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain(),pan=ctx.createPanner();source.buffer=buffer;source.loop=true;filter.type=type;filter.frequency.value=frequency;filter.Q.value=.6;gain.gain.value=0;pan.panningModel='HRTF';pan.distanceModel='inverse';pan.refDistance=definition.id==='fountain'?2:3;pan.maxDistance=60;pan.rolloffFactor=1;pan.positionX.value=x;pan.positionY.value=y;pan.positionZ.value=z;source.connect(filter).connect(gain).connect(pan).connect(this.master);source.start(0,index*.73%8);this.nodes.push({...definition,source,gain,filter,pan});
+      const source=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain(),pan=ctx.createPanner();source.buffer=buffer;source.loop=true;filter.type=type;filter.frequency.value=frequency;filter.Q.value=.6;gain.gain.value=0;pan.panningModel='HRTF';pan.distanceModel='inverse';pan.refDistance=definition.id==='fountain'?2:3;pan.maxDistance=60;pan.rolloffFactor=1;pan.positionX.value=x;pan.positionY.value=y;pan.positionZ.value=z;source.connect(filter).connect(gain).connect(pan).connect(this.buses.get(definition.id));source.start(0,index*.73%8);this.nodes.push({...definition,source,gain,filter,pan});
     }
   }
   update(camera,settings,time){if(!this.ctx||!this.master)return;const ctx=this.ctx,volume=this.active?1:0;
@@ -91,11 +116,12 @@ export class ParadiseAmbience{
     });
     if(this.active&&ctx.currentTime>=(this.nextDrop||0)){this.tone(650+(Math.sin(time*13)*.5+.5)*800,Math.sin(time*7)*.35,6+Math.cos(time*5)*.3,.013+settings.energy*.008,'drop');this.nextDrop=ctx.currentTime+.18+(1-settings.energy)*.25;}
     if(this.active&&ctx.currentTime>=(this.nextBird||0)){this.tone(1800+settings.energy*900,4,17,.012+settings.energy*.012,true);this.nextBird=ctx.currentTime+2+(1-settings.energy)*5;}
-    if(this.active&&settings.dreaminess>.3&&ctx.currentTime>=(this.nextChime||0)){this.tone(520+settings.dreaminess*260,-8,21,.014,false);this.nextChime=ctx.currentTime+5;}
+    if(this.active&&settings.dreaminess>.3&&ctx.currentTime>=(this.nextChime||0)){const notes=[261.63,329.63,392,523.25,659.25];this.tone(notes[Math.floor(time/5)%notes.length],-8,21,.014,false);this.nextChime=ctx.currentTime+5;}
+    if(this.active&&settings.nature>.35&&ctx.currentTime>=(this.nextInsect||0)){this.tone(3400+Math.sin(time)*250,5,14,.006,'insect');this.nextInsect=ctx.currentTime+1.8+(1-settings.energy)*2;}
     const p=new THREE.Vector3(),q=new THREE.Quaternion();camera.getWorldPosition(p);camera.getWorldQuaternion(q);const f=new THREE.Vector3(0,0,-1).applyQuaternion(q),u=new THREE.Vector3(0,1,0).applyQuaternion(q),listener=ctx.listener;
     if(listener.positionX){listener.positionX.value=p.x;listener.positionY.value=p.y;listener.positionZ.value=p.z;listener.forwardX.value=f.x;listener.forwardY.value=f.y;listener.forwardZ.value=f.z;listener.upX.value=u.x;listener.upY.value=u.y;listener.upZ.value=u.z;}
   }
-  tone(frequency,x,z,volume,kind){const ctx=this.ctx,osc=ctx.createOscillator(),gain=ctx.createGain(),pan=ctx.createPanner(),t=ctx.currentTime,duration=kind==='drop'?.18:kind?.25:2;osc.type='sine';osc.frequency.setValueAtTime(frequency,t);if(kind)osc.frequency.exponentialRampToValueAtTime(frequency*(kind==='drop'?.48:1.5),t+duration*.7);gain.gain.setValueAtTime(.0001,t);gain.gain.exponentialRampToValueAtTime(volume,t+.012);gain.gain.exponentialRampToValueAtTime(.0001,t+duration);pan.panningModel='HRTF';pan.refDistance=3;pan.positionX.value=x;pan.positionY.value=kind==='drop'?.8:2;pan.positionZ.value=z;osc.connect(gain).connect(pan).connect(this.master);osc.start();osc.stop(t+duration);osc.onended=()=>{osc.disconnect();gain.disconnect();pan.disconnect();};}
+  tone(frequency,x,z,volume,kind){const ctx=this.ctx,osc=ctx.createOscillator(),gain=ctx.createGain(),pan=ctx.createPanner(),t=ctx.currentTime,duration=kind==='drop'?.18:kind==='insect'?.4:kind?.25:2;osc.type='sine';osc.frequency.setValueAtTime(frequency,t);if(kind)osc.frequency.exponentialRampToValueAtTime(frequency*(kind==='drop'?.48:1.5),t+duration*.7);gain.gain.setValueAtTime(.0001,t);gain.gain.exponentialRampToValueAtTime(volume,t+.012);gain.gain.exponentialRampToValueAtTime(.0001,t+duration);pan.panningModel='HRTF';pan.refDistance=3;pan.positionX.value=x;pan.positionY.value=kind==='drop'?.8:2;pan.positionZ.value=z;const id=kind==='drop'?'fountain':kind==='insect'?'insects':kind?'birds':'chimes';osc.connect(gain).connect(pan).connect(this.buses.get(id)||this.master);osc.start();osc.stop(t+duration);osc.onended=()=>{osc.disconnect();gain.disconnect();pan.disconnect();};}
 }
 export function createDoor(root,{x=0,z=-2,title='Return to bedroom',onOpen=()=>{}}={}){
   const group=new THREE.Group();group.position.set(x,0,z);root.add(group);const wood=new THREE.MeshStandardMaterial({color:'#b09266'}),leaf=new THREE.Group();leaf.position.x=-.65;group.add(leaf);

@@ -9,7 +9,7 @@ test('fountain and three foliage regions have distinct positional audio',async()
  globalThis.AudioContext=Context;const audio=new ParadiseAmbience();await audio.start();assert.equal(audio.nodes.length,7);
  const fountain=audio.nodes.find(node=>node.id==='fountain');assert.deepEqual([fountain.pan.positionX.value,fountain.pan.positionY.value,fountain.pan.positionZ.value],[0,.85,6]);assert.equal(audio.nodes.filter(node=>node.id.endsWith('leaves')).length,3);
  assert.equal(fountain.pan.panningModel,'HRTF');assert.equal(fountain.source.loop,true);assert.equal(Math.abs(fountain.source.buffer.getChannelData(0)[0]),0);assert.equal(Math.abs(fountain.source.buffer.getChannelData(0).at(-1)),0);
- for(const node of audio.nodes)assert.ok(node.pan.connections.includes(audio.master));assert.ok(courtyardSounds.some(sound=>sound.id==='stream'));
+ for(const node of audio.nodes){assert.ok(node.pan.connections.includes(audio.buses.get(node.id)));assert.ok(audio.buses.get(node.id).connections.includes(audio.master));}assert.ok(courtyardSounds.some(sound=>sound.id==='stream'));
 });
 test('effects follow energy, master volume and leaving the outdoor room',async()=>{
  globalThis.AudioContext=Context;const audio=new ParadiseAmbience();await audio.start();const camera=new THREE.PerspectiveCamera();camera.position.set(0,1.6,5);camera.updateMatrixWorld();audio.active=true;
@@ -20,3 +20,10 @@ test('effects follow energy, master volume and leaving the outdoor room',async()
  assert.equal(audio.ctx.listener.positionZ.value,5);
 });
 test('pending audio startup can be updated without throwing',()=>{const audio=new ParadiseAmbience();audio.ctx={};assert.doesNotThrow(()=>audio.update(null,{},0));});
+
+test('outdoor mixer controls separate buses and preserves volume through mute and moods',async()=>{
+ globalThis.AudioContext=Context;const audio=new ParadiseAmbience();await audio.start();assert.equal(audio.channels().length,10);let changes=0;const unsubscribe=audio.subscribe(()=>changes++);
+ audio.setChannel('fountain',.25);assert.equal(audio.buses.get('fountain').gain.value,.5);audio.toggleChannel('fountain');assert.equal(audio.buses.get('fountain').gain.value,0);assert.equal(audio.channels().find(c=>c.id==='fountain').level,.25);
+ audio.active=true;audio.update(new THREE.PerspectiveCamera(),{energy:1,nature:1,dreaminess:1},1);assert.equal(audio.buses.get('fountain').gain.value,0);audio.toggleChannel('fountain');assert.equal(audio.buses.get('fountain').gain.value,.5);
+ audio.muteAll(true);assert.ok(audio.channels().every(c=>c.muted));audio.muteAll(false);assert.ok(audio.channels().every(c=>!c.muted));audio.setChannel('birds',2);assert.equal(audio.channels().find(c=>c.id==='birds').level,1);audio.resetMix();assert.equal(audio.channels().find(c=>c.id==='birds').level,.8);assert.ok(changes>5);unsubscribe();
+});

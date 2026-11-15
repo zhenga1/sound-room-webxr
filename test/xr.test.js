@@ -79,3 +79,8 @@ test('public build uses relative URLs and contains all clips',()=>{
  const html=readFileSync('dist/index.html','utf8');assert.ok(!html.includes('src="/assets/'));
  for(const file of readdirSync('src/audio').filter(f=>f.endsWith('.wav')))assert.ok(existsSync(`dist/audio/${file}`));
 });
+
+test('outdoor sound menu uses courtyard channels with working volume and mute',()=>{
+ let level=.5,muted=false;const ambience={channels:()=>[{id:'birds',label:'Garden birds',level,muted}],setChannel:(id,value)=>{assert.equal(id,'birds');level=value;},toggleChannel:()=>{muted=!muted;}};
+ const app=setup({getParadise:()=>({active:true,ambience})});assert.equal(app.soundEntries()[0].outdoor,true);app.buttons.find(b=>b.userData.label==='+').userData.action();assert.equal(level,.6);app.buttons.find(b=>b.userData.label==='Mute').userData.action();assert.equal(muted,true);
+});

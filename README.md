@@ -65,3 +65,5 @@ Do not publish the neighboring `sound-room` directory; it contains separate eval
 ## Verification
 
 Automated checks cover controller thumbstick mapping, stroke validation/caps, VR menu initialization, ink geometry/undo, session rig cleanup, bundled audio, and Pages-relative output. No physical Quest 3 is connected to this development session, so real headset tracking, controller feel, immersive audio, and frame rate remain unverified.
+
+Outdoor mixer: open Outdoor mixer on desktop; in Quest press A / stick click to open the menu (choose SOUND in the integrated room). Ten independent channels cover fountain, birds, three foliage regions, stream, waves, breeze, pentatonic chimes and light meadow crickets. More sounds pages through VR controls; +/- changes volume, Mute silences a channel without losing its volume. Reset lively mix restores the curated bird-and-foliage-led balance. Settings persist on this browser. Supplemental sounds use local procedural Web Audio, not Attractor generation; original courtyard SATIE audio remains and follows matching mixer controls.

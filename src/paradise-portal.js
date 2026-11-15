@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {createCourtyard} from './partner-courtyard.js';
 import {buildParadise,ParadiseAmbience,createDoor,moods,personalize,islandBounds,islandHeight} from './paradise-world.js';
+import {mountOutdoorMixer} from './outdoor-mixer.js';
 export class ParadisePortal{
   constructor({scene,camera,door,engine,sources,toast,keys}){
     Object.assign(this,{scene,camera,engine,sources,toast,keys});this.active=false;this.paused=false;this.travel=null;this.indoorSaved=new Map();
@@ -13,6 +14,8 @@ export class ParadisePortal{
     const labelCanvas=document.createElement('canvas');labelCanvas.width=768;labelCanvas.height=128;const ctx=labelCanvas.getContext('2d');ctx.fillStyle='#244b43';ctx.fillRect(0,0,768,128);ctx.fillStyle='#fff7df';ctx.font='34px system-ui';ctx.textAlign='center';ctx.fillText('INNER EDEN - open door',384,80);const tex=new THREE.CanvasTexture(labelCanvas);tex.colorSpace=THREE.SRGBColorSpace;
     const sign=new THREE.Mesh(new THREE.PlaneGeometry(1.7,.28),new THREE.MeshBasicMaterial({map:tex,side:THREE.DoubleSide}));sign.position.set(0,2.95,.12);door.add(sign);
     const target=document.getElementById('eden-status');this.status=target;
+    const mixer=document.getElementById('outdoor-mixer');if(mixer?.replaceChildren)mountOutdoorMixer(mixer,this.ambience);
+    document.getElementById('eden-mix-toggle').onclick=()=>{mixer.hidden=!mixer.hidden;this.keys.clear();};
     for(const button of document.querySelectorAll('[data-eden-preset]'))button.onclick=()=>this.set(moods[button.dataset.edenPreset]);
     for(const key of ['energy','nature','dreaminess'])document.getElementById('eden-'+key).oninput=e=>this.set({[key]:Number(e.target.value)/100});
     document.getElementById('eden-personalize').onclick=()=>{this.set(personalize(document.getElementById('eden-feeling').value,document.getElementById('eden-place').value));this.toast('Your words selected an existing paradise setting.');};

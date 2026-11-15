@@ -126,16 +126,20 @@ export class BedroomXR {
     }else if(this.panel==='sound'){
       const entries=this.soundEntries(),pages=Math.max(1,Math.ceil(entries.length/4));this.soundPage%=pages;
       entries.slice(this.soundPage*4,this.soundPage*4+4).forEach((item,i)=>{
-        const y=.43-i*.25,input=item.row.querySelector('input'),percent=input?input.value:0;
+        const y=.43-i*.25,input=item.outdoor?null:item.row.querySelector('input'),percent=item.outdoor?Math.round(item.level*100):input?input.value:0;
         this.label(item.name+' '+percent+'%',-.45,y,1.2,.18,()=>{this.selected=item;this.refreshMenu();});
         const muted=item.muted??item.player?.muted;
-        this.label(muted?'Play':'Mute',.36,y,.34,.18,()=>{item.row.querySelector('.mute,.trace-mute')?.click();this.buildMenu();});
+        this.label(muted?'Play':'Mute',.36,y,.34,.18,()=>{if(item.outdoor)this.getParadise().ambience.toggleChannel(item.id);else item.row.querySelector('.mute,.trace-mute')?.click();this.buildMenu();});
         this.label('−',.68,y,.23,.18,()=>{this.volumeItem(item,-10);this.buildMenu();});
         this.label('+',.96,y,.23,.18,()=>{this.volumeItem(item,10);this.buildMenu();});
       });
       if(!entries.length)this.label('Add a sound object in OBJECTS',0,.3,2.1,.15);
-      this.label('More sounds →',-.57,-.59,1.05,.14,()=>{this.soundPage=(this.soundPage+1)%pages;this.buildMenu();});
-      this.label(this.engine.playing?'Pause all':'Play all',.57,-.59,1.05,.14,()=>{this.toggleAudio?.();});
+      const outside=this.getParadise?.()?.active;
+      if(outside){
+        this.label('More sounds',-.75,-.59,.68,.14,()=>{this.soundPage=(this.soundPage+1)%pages;this.buildMenu();});
+        this.label('Reset mix',0,-.59,.68,.14,()=>{this.getParadise().ambience.resetMix();this.buildMenu();});
+        const muted=entries.every(item=>item.muted);this.label(muted?'Unmute all':'Mute all',.75,-.59,.68,.14,()=>{this.getParadise().ambience.muteAll(!muted);this.buildMenu();});
+      }else{this.label('More sounds →',-.57,-.59,1.05,.14,()=>{this.soundPage=(this.soundPage+1)%pages;this.buildMenu();});this.label(this.engine.playing?'Pause all':'Play all',.57,-.59,1.05,.14,()=>{this.toggleAudio?.();});}
     }else if(this.panel==='view'){
       this.label('Turn left',-.57,.43,1.05,.17,()=>{this.turn(Math.PI/6);this.showMenu();});
       this.label('Turn right',.57,.43,1.05,.17,()=>{this.turn(-Math.PI/6);this.showMenu();});
@@ -152,8 +156,8 @@ export class BedroomXR {
         const head=this.syncHead(),forward=new THREE.Vector3(0,0,-1).applyQuaternion(head.quaternion);forward.y=0;forward.normalize();const p=head.position.clone().addScaledVector(forward,2.8);const source=this.addObject(item.type,{x:p.x,z:p.z});if(source)this.selected=source;this.refreshMenu();
       }));
       this.label('More objects →',0,-.1,2.15,.13,()=>{this.menuPage=(this.menuPage+1)%Math.ceil(this.catalog.length/6);this.buildMenu();});
-      this.label('Rotate',-.57,-.3,1.05,.14,()=>this.selected?.row.querySelector('.rotate')?.click());
-      this.label('Remove',.57,-.3,1.05,.14,()=>{if(this.selected&&!this.selected.player){this.removeObject(this.selected);this.selected=null;this.refreshMenu();}});
+      this.label('Rotate',-.57,-.3,1.05,.14,()=>this.selected?.row?.querySelector('.rotate')?.click());
+      this.label('Remove',.57,-.3,1.05,.14,()=>{if(this.selected&&!this.selected.player&&!this.selected.outdoor){this.removeObject(this.selected);this.selected=null;this.refreshMenu();}});
       this.label('Studio / Cathedral',0,-.5,2.15,.14,()=>{this.setPreset(this.engine.preset==='studio'?'cathedral':'studio');this.refreshMenu();});
     }
     this.label('Mode: '+this.mode.toUpperCase(),-.75,-.78,.68,.14,()=>this.cycleMode(),'#466338');
@@ -162,11 +166,11 @@ export class BedroomXR {
     this.label('Sticks work with menu open · A / stick click: menu',0,-.96,2.15,.08);
     this.label('B: mode · X: undo · L trigger: teleport · Grip: move',0,-1.07,2.15,.08);this.refreshMenu();
   }
-  soundEntries(){return [...(this.getSources?.()||[]).filter(s=>s.sound),...(this.getTraces?.()||[]).map(t=>({...t,name:(this.soundChoices.find(s=>s.sound===t.sound)?.name||t.sound)+' trace'}))];}
+  soundEntries(){const paradise=this.getParadise?.();if(paradise?.active)return paradise.ambience.channels().map(item=>({...item,name:item.label,outdoor:true}));return [...(this.getSources?.()||[]).filter(s=>s.sound),...(this.getTraces?.()||[]).map(t=>({...t,name:(this.soundChoices.find(s=>s.sound===t.sound)?.name||t.sound)+' trace'}))];}
   chooseNextTrace(delta){this.traceSound=(this.traceSound+delta+this.soundChoices.length)%this.soundChoices.length;this.setNextTraceSound?.(this.soundChoices[this.traceSound].sound);this.buildMenu();}
   chooseTraceSound(trace,delta){const index=this.soundChoices.findIndex(item=>item.sound===trace.sound);const sound=this.soundChoices[(index+delta+this.soundChoices.length)%this.soundChoices.length].sound;this.changeTraceSound?.(trace,sound);this.buildMenu();}
   cycleMode(){this.mode=this.mode==='draw'?'trace':this.mode==='trace'?'move':'draw';this.buildMenu();}
-  volumeItem(item,delta){const input=item.row.querySelector('input');if(input){input.value=Math.max(0,Math.min(100,Number(input.value)+delta));input.dispatchEvent(new Event('input'));}}
+  volumeItem(item,delta){if(item.outdoor){this.getParadise().ambience.setChannel(item.id,item.level+delta/100);return;}const input=item.row.querySelector('input');if(input){input.value=Math.max(0,Math.min(100,Number(input.value)+delta));input.dispatchEvent(new Event('input'));}}
   turn(angle){const head=this.syncHead().position.clone(),q=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),angle);this.rig.position.sub(head).applyQuaternion(q).add(head);this.rig.quaternion.premultiply(q);}
   dolly(distance){const head=this.syncHead(),forward=new THREE.Vector3(0,0,-1).applyQuaternion(head.quaternion);forward.y=0;forward.normalize();this.rig.position.addScaledVector(forward,distance);this.clampPosition();}
   clampPosition(){const head=this.syncHead(),paradise=this.getParadise?.(),position=paradise?paradise.clamp(head.position.x,head.position.z):{x:THREE.MathUtils.clamp(head.position.x,-5.35,5.35),z:THREE.MathUtils.clamp(head.position.z,-5.35,5.35)};this.rig.position.x+=position.x-head.position.x;this.rig.position.z+=position.z-head.position.z;if(paradise)this.rig.position.y=paradise.height(position.x,position.z);}
