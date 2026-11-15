@@ -27,11 +27,11 @@ export class BedroomXR {
       const handle=new THREE.Mesh(new THREE.CapsuleGeometry(.025,.09,3,8),new THREE.MeshStandardMaterial({color:'#c9d5cf',roughness:.6}));handle.rotation.x=Math.PI/3;grip.add(handle);
       const data={controller,grip,beam,source:null,trigger:false,squeeze:false,buttons:[],stroke:null,floorPoints:null,held:null,hover:null};this.controls.push(data);
       controller.addEventListener('connected',e=>{data.source=e.data;});
-      controller.addEventListener('disconnected',()=>{if(data.outdoorTrace){this.getParadise().traces.cancel();data.outdoorTrace=false;}this.finish(data);data.source=null;data.trigger=false;data.squeeze=false;});
+      controller.addEventListener('disconnected',()=>{this.getParadise?.()?.objects?.endDrag(data);data.outdoorDrag=false;if(data.outdoorTrace){this.getParadise().traces.cancel();data.outdoorTrace=false;}this.finish(data);data.source=null;data.trigger=false;data.squeeze=false;});
       controller.addEventListener('selectstart',()=>{data.trigger=true;this.press(data);});
       controller.addEventListener('selectend',()=>{data.trigger=false;this.finish(data);});
       controller.addEventListener('squeezestart',()=>{data.squeeze=true;this.grab(data);});
-      controller.addEventListener('squeezeend',()=>{data.squeeze=false;data.held=null;this.saveLayout();});
+      controller.addEventListener('squeezeend',()=>{this.getParadise?.()?.objects?.endDrag(data);data.outdoorDrag=false;data.squeeze=false;data.held=null;this.saveLayout();});
     }
     try{const strokes=JSON.parse(localStorage.getItem('sound-room-xr-ink-v1'));if(Array.isArray(strokes)){let count=0;for(const stroke of strokes){if(!validStroke(stroke)||count+stroke.points.length>MAX_POINTS)continue;this.strokes.push(stroke);count+=stroke.points.length;}}}catch{}
     this.rebuildInk();
@@ -59,7 +59,7 @@ export class BedroomXR {
     this.keys.clear();this.menuPending=true;this.syncHead();this.menuDock.visible=true;
   }
   end(){
-    for(const data of this.controls){if(data.outdoorTrace){this.getParadise().traces.cancel();data.outdoorTrace=false;}this.finish(data);data.held=null;data.trigger=false;data.squeeze=false;data.buttons=[];}
+    for(const data of this.controls){this.getParadise?.()?.objects?.endDrag(data);data.outdoorDrag=false;if(data.outdoorTrace){this.getParadise().traces.cancel();data.outdoorTrace=false;}this.finish(data);data.held=null;data.trigger=false;data.squeeze=false;data.buttons=[];}
     this.scene.add(this.camera);if(this.desktop){this.camera.position.copy(this.desktop.position);this.camera.quaternion.copy(this.desktop.quaternion);this.renderer.shadowMap.enabled=this.desktop.shadow;}
     this.rig.position.set(0,0,0);this.rig.rotation.set(0,0,0);this.menu.visible=false;this.tip.visible=false;this.teleport.visible=false;this.menuDock.visible=false;this.cursor.visible=false;document.body.classList.remove('in-xr');this.keys.clear();
   }
@@ -157,7 +157,7 @@ export class BedroomXR {
       const objects=this.getParadise().objects,pages=Math.ceil(outdoorObjects.length/6);
       outdoorObjects.slice((this.menuPage%pages)*6,(this.menuPage%pages)*6+6).forEach((item,i)=>this.label('+ '+item.name,(i%2-.5)*1.12,.43-Math.floor(i/2)*.17,1.05,.14,()=>{objects.add(item.type);this.refreshMenu();}));
       this.label('More objects',0,-.1,2.15,.13,()=>{this.menuPage=(this.menuPage+1)%pages;this.buildMenu();});
-      this.label('Move last here',-.57,-.3,1.05,.14,()=>{if(objects.selected)objects.moveHere(objects.selected.id);});
+      this.label('Point + hold grip to drag',-.57,-.3,1.05,.14,()=>{this.menu.visible=false;});
       this.label('Remove last',.57,-.3,1.05,.14,()=>{if(objects.selected)objects.remove(objects.selected.id);this.buildMenu();});
       this.label('Each object gets a SOUND mixer row',0,-.5,2.15,.14);
     }else{
@@ -195,7 +195,7 @@ export class BedroomXR {
   press(data){
     const button=this.hitUI(data);
     if(button){if(button.object.userData.portal)button.object.userData.portal();else button.object.userData.action?.();return;}
-    if(this.menu.visible)return;
+    if(this.menu.visible||data.outdoorDrag)return;
     if(data.source?.handedness==='left'){data.teleporting=true;return;}
     if(this.getParadise?.()?.active&&this.mode==='trace'){data.outdoorTrace=this.getParadise().traces.begin();return;}
     if(this.getParadise?.()?.active){this.panel='eden';this.buildMenu();this.showMenu();return;}
@@ -205,7 +205,7 @@ export class BedroomXR {
     data.stroke={color:colors[this.color],width:this.width,points:[]};this.strokes.push(data.stroke);
   }
   grab(data){
-    if(this.menu.visible||this.getParadise?.()?.active)return;this.controllerRay(data);const hit=this.ray.intersectObjects(this.pickables).find(h=>!h.object.userData.source?.removed);
+    if(this.menu.visible)return;const paradise=this.getParadise?.();if(paradise?.active){if(!data.outdoorTrace){this.controllerRay(data);data.outdoorDrag=paradise.objects.beginDrag(this.ray,data);}return;}this.controllerRay(data);const hit=this.ray.intersectObjects(this.pickables).find(h=>!h.object.userData.source?.removed);
     if(hit){data.held=hit.object.userData.source;this.selected=data.held;this.refreshMenu();}
   }
   finish(data){
@@ -241,6 +241,7 @@ export class BedroomXR {
       if(data.hover)data.hover.material.color.copy(data.hover.userData.baseTint||new THREE.Color('#ffffff'));const hit=this.hitUI(data);data.hover=hit?.object||null;if(data.hover){data.hover.userData.baseTint??=data.hover.material.color.clone();data.hover.material.color.set('#d6f48a');}
       data.beam.scale.z=hit?hit.distance:4;data.beam.position.z=-data.beam.scale.z/2;
       if(!left){this.cursor.visible=true;this.cursor.position.copy(hit?hit.point:this.ray.ray.at(2,new THREE.Vector3()));}
+      if(data.outdoorDrag){const world=this.getParadise?.();if(!world?.active||this.menu.visible||!data.squeeze||!gamepad?.buttons?.[1]?.pressed){world?.objects.endDrag(data);data.outdoorDrag=false;}else{this.controllerRay(data);world.objects.drag(this.ray,data);}}
       if(data.held&&(data.squeeze||data.trigger)&&!this.menu.visible){const point=this.floorPoint(data);if(point)this.move(data.held,point.x,point.z);}
       if(data.teleporting){const point=this.floorPoint(data);if(point){this.teleport.visible=true;this.teleport.position.set(point.x,.025,point.z);}}
       if(data.outdoorTrace&&data.trigger)this.getParadise().traces.sample(this.floorPoint(data));

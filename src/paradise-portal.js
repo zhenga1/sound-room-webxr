@@ -17,7 +17,7 @@ export class ParadisePortal{
     const sign=new THREE.Mesh(new THREE.PlaneGeometry(1.7,.28),new THREE.MeshBasicMaterial({map:tex,side:THREE.DoubleSide}));sign.position.set(0,2.95,.12);door.add(sign);
     const target=document.getElementById('eden-status');this.status=target;
     const mixer=document.getElementById('outdoor-mixer');if(mixer?.replaceChildren)mountOutdoorMixer(mixer,this.ambience,this.objects,this.traces);
-    document.getElementById('eden-mix-toggle').onclick=()=>{mixer.hidden=!mixer.hidden;this.keys.clear();};
+    document.getElementById('eden-mix-toggle').onclick=()=>{mixer.hidden=!mixer.hidden;this.keys.clear();if(document.pointerLockElement)document.exitPointerLock();};
     for(const button of document.querySelectorAll('[data-eden-preset]'))button.onclick=()=>this.set(moods[button.dataset.edenPreset]);
     for(const key of ['energy','nature','dreaminess'])document.getElementById('eden-'+key).oninput=e=>this.set({[key]:Number(e.target.value)/100});
     document.getElementById('eden-personalize').onclick=()=>{this.set(personalize(document.getElementById('eden-feeling').value,document.getElementById('eden-place').value));this.toast('Your words selected an existing paradise setting.');};
@@ -37,7 +37,7 @@ export class ParadisePortal{
   update(dt,time,xr,view){
     this.view=view;this.returnDoor.update(dt);
     if(this.travel){this.travel.time+=dt;if(this.travel.outdoor)this.hinge.rotation.y=THREE.MathUtils.lerp(this.hinge.rotation.y,-Math.PI*.48,1-Math.exp(-dt*6));
-      if(this.travel.time>.7){const outside=this.travel.outdoor;this.travel=null;this.traces.cancel();this.traces.armed=false;this.active=outside;this.indoor.visible=!outside;this.outdoor.visible=outside;this.paused=false;this.ambience.active=outside;if(outside)this.returnDoor.reset();
+      if(this.travel.time>.7){const outside=this.travel.outdoor;this.travel=null;this.objects.cancelDrags();this.traces.cancel();this.traces.armed=false;this.active=outside;this.indoor.visible=!outside;this.outdoor.visible=outside;this.paused=false;this.ambience.active=outside;if(outside)this.returnDoor.reset();
         const position=outside?new THREE.Vector3(0,0,0):new THREE.Vector3(-3.85,0,-4.2);
         if(xr.renderer.xr.isPresenting){const head=xr.syncHead();xr.rig.position.x+=position.x-head.position.x;xr.rig.position.z+=position.z-head.position.z;xr.rig.position.y=0;xr.rig.rotation.y=Math.PI;xr.menu.visible=false;}
         else{this.camera.position.set(position.x,1.7,position.z);this.camera.rotation.set(-.04,Math.PI,0);}

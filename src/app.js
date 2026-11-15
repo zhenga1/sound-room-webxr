@@ -364,6 +364,7 @@ const xr=new BedroomXR({getParadise:()=>paradise,getPortalTargets:()=>paradise.h
   startAudio:async()=>{await start();if(!engine.playing)throw new Error('Audio could not start. Try Start listening first.');},
   addFloorTrace:(sound,points)=>{if(traces.length>=12){toast('Maximum of 12 sound traces.');return;}if(traceLength(points)<.55)return;addTrace({id:`trace-${nextTraceId++}`,sound,points,x:points[0][0],z:points[0][1],volume:.3,muted:false});}
 });
+paradise.objects.bindDesktop(renderer.domElement,camera,()=>paradise.active&&!renderer.xr.isPresenting&&!paradise.traces.armed);
 paradise.traces.bindDesktop(renderer.domElement,camera,()=>paradise.active&&!renderer.xr.isPresenting);
 renderer.setAnimationLoop(frame);
 // Read-only diagnostics for local smoke checks.

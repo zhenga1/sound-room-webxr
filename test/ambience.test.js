@@ -33,7 +33,7 @@ test('outdoor mixer controls separate buses and preserves volume through mute an
 test('added objects have independent voices, bounded positions, relocation and complete removal',async()=>{
  globalThis.AudioContext=Context;const audio=new ParadiseAmbience(),root=new THREE.Group(),camera=new THREE.PerspectiveCamera();camera.position.set(0,1.6,5);camera.updateMatrixWorld();const objects=new OutdoorObjects(root,audio,()=>camera);
  const first=objects.add('fountain',{x:0,z:4}),second=objects.add('fountain',{x:3,z:6});await audio.start();assert.notEqual(first.id,second.id);assert.equal(audio.instances.length,2);assert.equal(root.children.length,2);assert.equal(audio.nodes.filter(n=>n.soundId==='fountain').length,2);
- audio.setChannel(first.id,.2);audio.toggleChannel(first.id);assert.equal(audio.buses.get(first.id).gain.value,0);assert.ok(audio.buses.get(second.id).gain.value>0);camera.position.x=2;camera.updateMatrixWorld();objects.moveHere(first.id);assert.equal(first.group.position.x,2);assert.equal(audio.nodes.find(n=>n.id===first.id).pan.positionX.value,2);
+ audio.setChannel(first.id,.2);audio.toggleChannel(first.id);assert.equal(audio.buses.get(first.id).gain.value,0);assert.ok(audio.buses.get(second.id).gain.value>0);camera.position.x=2;camera.updateMatrixWorld();objects.move(first.id,2,4);assert.equal(first.group.position.x,2);assert.equal(audio.nodes.find(n=>n.id===first.id).pan.positionX.value,2);
  const node=audio.nodes.find(n=>n.id===first.id);objects.remove(first.id);assert.equal(node.pan.disconnected,true);assert.equal(audio.channels().some(c=>c.id===first.id),false);assert.equal(root.children.length,1);
  const birds=objects.add('birdhouse',{x:100,z:100});assert.ok(Math.abs(birds.group.position.x)<=13);assert.ok(audio.buses.has(birds.id));for(let i=0;i<30;i++)objects.add('tree');assert.equal(objects.items.length,16);assert.equal(objects.add('tree'),null);
 });
@@ -49,4 +49,22 @@ test('trace drawing rejects invalid or short paths and cancelling leaves no soun
  assert.equal(traces.add('birds',[[0,4],[0,4.1]]),null);assert.equal(traces.add('birds',[[NaN,4],[1,4]]),null);assert.equal(traces.add('birds',[[100,4],[101,4]]),null);assert.equal(traces.add('unknown',[[0,4],[1,4]]),null);
  traces.begin();traces.sample({x:0,z:4});traces.sample({x:1,z:4});assert.ok(traces.previewLine);traces.cancel();assert.equal(root.children.length,0);assert.equal(audio.instances.length,0);
  traces.nextSound='birds';traces.begin();traces.sample({x:0,z:4});traces.sample({x:1,z:4});const item=traces.finish();assert.equal(item.sound,'birds');assert.equal(traces.draft,null);assert.equal(traces.previewLine,null);
+});
+
+test('ray dragging preserves grab offset, moves sound, clamps island edges and releases cleanly',async()=>{
+ globalThis.AudioContext=Context;const audio=new ParadiseAmbience(),root=new THREE.Group(),camera=new THREE.PerspectiveCamera(),objects=new OutdoorObjects(root,audio,()=>camera);await audio.start();const item=objects.add('fountain',{x:0,z:4}),owner={};const ray=new THREE.Raycaster(new THREE.Vector3(0,3,4),new THREE.Vector3(0,-1,0));assert.equal(objects.beginDrag(ray,owner),true);assert.equal(objects.beginDrag(ray,{}),false);const material=item.group.children[0].material;assert.equal(material.emissiveIntensity,.35);
+ ray.ray.origin.x=4;assert.equal(objects.drag(ray,owner),true);assert.equal(item.group.position.x,4);assert.equal(audio.instances.find(v=>v.id===item.id).x,4);assert.equal(audio.nodes.find(v=>v.id===item.id).pan.positionX.value,4);
+ ray.ray.origin.x=80;objects.drag(ray,owner);assert.ok(item.group.position.x<=13);const x=item.group.position.x;objects.endDrag(owner);assert.equal(material.emissiveIntensity,1);ray.ray.origin.x=1;assert.equal(objects.drag(ray,owner),false);assert.equal(item.group.position.x,x);
+ objects.move(item.id,0,4);ray.ray.origin.set(0,3,4);objects.beginDrag(ray,owner);objects.remove(item.id);assert.equal(objects.drags.size,0);assert.equal(objects.beginDrag(ray,owner),false);
+});
+test('moving a tonal sound updates its playing panners as well as future notes',async()=>{
+ globalThis.AudioContext=Context;const audio=new ParadiseAmbience();await audio.start();const item=audio.addInstance('chimes',{x:0,y:1,z:4});audio.tone(523,0,4,.02,false,item.id,1);const pan=[...audio.movingTones.get(item.id)][0];audio.moveInstance(item.id,3,2,7);assert.deepEqual([pan.positionX.value,pan.positionY.value,pan.positionZ.value],[3,2,7]);audio.removeInstance(item.id);assert.equal(audio.movingTones.has(item.id),false);
+});
+
+test('desktop drag captures object gestures, releases on blur and yields to trace drawing',async()=>{
+ const previousWindow=globalThis.window,previousDocument=globalThis.document;globalThis.window=new EventTarget();globalThis.document=new EventTarget();try{
+ globalThis.AudioContext=Context;const audio=new ParadiseAmbience(),root=new THREE.Group(),camera=new THREE.PerspectiveCamera(60,1,.1,100);camera.position.set(0,3,4);camera.lookAt(0,0,4);camera.updateMatrixWorld();const objects=new OutdoorObjects(root,audio,()=>camera);await audio.start();const item=objects.add('fountain',{x:0,z:4});const canvas=new EventTarget();canvas.style={};canvas.getBoundingClientRect=()=>({left:0,top:0,width:100,height:100});let captured=null;canvas.setPointerCapture=id=>captured=id;canvas.hasPointerCapture=id=>captured===id;canvas.releasePointerCapture=()=>{captured=null;};let active=true;objects.bindDesktop(canvas,camera,()=>active);
+ const send=(type,x=50)=>{const event=new Event(type,{cancelable:true});Object.assign(event,{button:0,pointerId:1,clientX:x,clientY:50});canvas.dispatchEvent(event);return event;};assert.equal(send('pointerdown').defaultPrevented,true);assert.equal(canvas.style.cursor,'grabbing');send('pointermove',65);assert.ok(item.group.position.x>0);send('pointerup',65);const x=item.group.position.x;send('pointermove',90);assert.equal(item.group.position.x,x);assert.equal(objects.drags.size,0);assert.equal(captured,null);
+ objects.move(item.id,0,4);send('pointerdown');window.dispatchEvent(new Event('blur'));assert.equal(objects.drags.size,0);assert.equal(canvas.style.cursor,'');active=false;assert.equal(send('pointerdown').defaultPrevented,false);
+ }finally{globalThis.window=previousWindow;globalThis.document=previousDocument;}
 });

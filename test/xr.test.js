@@ -86,9 +86,13 @@ test('outdoor sound menu uses courtyard channels with working volume and mute',(
 });
 
 test('outdoor objects tab adds outdoor sources without calling indoor catalog',()=>{
- let added=null;const objects={add:type=>{added=type;},selected:null};const ambience={channels:()=>[]};const app=setup({getParadise:()=>({active:true,objects,ambience})});app.panel='objects';app.buildMenu();app.buttons.find(b=>b.userData.label==='+ Small fountain').userData.action();assert.equal(added,'fountain');assert.ok(app.buttons.some(b=>b.userData.label==='Move last here'));
+ let added=null;const objects={add:type=>{added=type;},selected:null};const ambience={channels:()=>[]};const app=setup({getParadise:()=>({active:true,objects,ambience})});app.panel='objects';app.buildMenu();app.buttons.find(b=>b.userData.label==='+ Small fountain').userData.action();assert.equal(added,'fountain');assert.ok(app.buttons.some(b=>b.userData.label==='Point + hold grip to drag'));
 });
 
 test('outdoor trace menu starts right-trigger drawing and release finishes outdoors only',()=>{
  let begun=0,finished=0,indoor=0;const traces={renderVR(button,draw){button('Draw outdoor trace',0,0,1,.2,draw);},begin(){begun++;return true;},finish(){finished++;}};const app=setup({getParadise:()=>({active:true,traces,ambience:{channels:()=>[]}}),addFloorTrace:()=>indoor++});app.panel='traces';app.buildMenu();app.buttons.find(b=>b.userData.label==='Draw outdoor trace').userData.action();assert.equal(app.mode,'trace');assert.equal(app.menu.visible,false);app.hitUI=()=>null;const data=app.controls[1];data.source={handedness:'right'};app.press(data);assert.equal(begun,1);assert.equal(data.outdoorTrace,true);app.finish(data);assert.equal(finished,1);assert.equal(indoor,0);assert.equal(data.outdoorTrace,false);
+});
+
+test('Quest grip starts outdoor drag and release clears it independently of indoor movement',()=>{
+ let grabbed=null,released=null;const objects={beginDrag:(ray,owner)=>{grabbed=owner;return true;},endDrag:owner=>released=owner};const app=setup({getParadise:()=>({active:true,objects,ambience:{channels:()=>[]}})});app.menu.visible=false;const data=app.controls[1];data.controller.dispatchEvent({type:'squeezestart'});assert.equal(grabbed,data);assert.equal(data.outdoorDrag,true);data.controller.dispatchEvent({type:'squeezeend'});assert.equal(released,data);assert.equal(data.outdoorDrag,false);
 });
