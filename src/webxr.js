@@ -27,7 +27,7 @@ export class BedroomXR {
       const handle=new THREE.Mesh(new THREE.CapsuleGeometry(.025,.09,3,8),new THREE.MeshStandardMaterial({color:'#c9d5cf',roughness:.6}));handle.rotation.x=Math.PI/3;grip.add(handle);
       const data={controller,grip,beam,source:null,trigger:false,squeeze:false,buttons:[],stroke:null,floorPoints:null,held:null,hover:null};this.controls.push(data);
       controller.addEventListener('connected',e=>{data.source=e.data;});
-      controller.addEventListener('disconnected',()=>{this.finish(data);data.source=null;data.trigger=false;data.squeeze=false;});
+      controller.addEventListener('disconnected',()=>{if(data.outdoorTrace){this.getParadise().traces.cancel();data.outdoorTrace=false;}this.finish(data);data.source=null;data.trigger=false;data.squeeze=false;});
       controller.addEventListener('selectstart',()=>{data.trigger=true;this.press(data);});
       controller.addEventListener('selectend',()=>{data.trigger=false;this.finish(data);});
       controller.addEventListener('squeezestart',()=>{data.squeeze=true;this.grab(data);});
@@ -59,7 +59,7 @@ export class BedroomXR {
     this.keys.clear();this.menuPending=true;this.syncHead();this.menuDock.visible=true;
   }
   end(){
-    for(const data of this.controls){this.finish(data);data.held=null;data.trigger=false;data.squeeze=false;data.buttons=[];}
+    for(const data of this.controls){if(data.outdoorTrace){this.getParadise().traces.cancel();data.outdoorTrace=false;}this.finish(data);data.held=null;data.trigger=false;data.squeeze=false;data.buttons=[];}
     this.scene.add(this.camera);if(this.desktop){this.camera.position.copy(this.desktop.position);this.camera.quaternion.copy(this.desktop.quaternion);this.renderer.shadowMap.enabled=this.desktop.shadow;}
     this.rig.position.set(0,0,0);this.rig.rotation.set(0,0,0);this.menu.visible=false;this.tip.visible=false;this.teleport.visible=false;this.menuDock.visible=false;this.cursor.visible=false;document.body.classList.remove('in-xr');this.keys.clear();
   }
@@ -105,6 +105,8 @@ export class BedroomXR {
         this.label(paradise.paused?'Resume':'Pause here',-.75,-.55,.69,.14,()=>{paradise.paused=!paradise.paused;this.keys.clear();this.buildMenu();});
         this.label('Save favorite',0,-.55,.69,.14,()=>paradise.favorite());this.label('Bedroom',.75,-.55,.69,.14,()=>paradise.open(false));
       }
+    }else if(this.panel==='traces'&&this.getParadise?.()?.active){
+      this.getParadise().traces.renderVR(this.label.bind(this),()=>{this.mode='trace';this.menu.visible=false;this.toast('Aim at the ground. Hold right trigger and draw; release to finish.');},()=>this.buildMenu());
     }else if(this.panel==='traces'){
       this.label('Next trace: '+this.soundChoices[this.traceSound].name,0,.44,2.15,.12);
       this.label('← Previous sound',-.57,.26,1.05,.13,()=>this.chooseNextTrace(-1));
@@ -195,6 +197,7 @@ export class BedroomXR {
     if(button){if(button.object.userData.portal)button.object.userData.portal();else button.object.userData.action?.();return;}
     if(this.menu.visible)return;
     if(data.source?.handedness==='left'){data.teleporting=true;return;}
+    if(this.getParadise?.()?.active&&this.mode==='trace'){data.outdoorTrace=this.getParadise().traces.begin();return;}
     if(this.getParadise?.()?.active){this.panel='eden';this.buildMenu();this.showMenu();return;}
     if(this.mode==='move'){this.grab(data);return;}
     if(this.mode==='trace'){data.floorPoints=[];return;}
@@ -206,6 +209,7 @@ export class BedroomXR {
     if(hit){data.held=hit.object.userData.source;this.selected=data.held;this.refreshMenu();}
   }
   finish(data){
+    if(data.outdoorTrace){this.getParadise().traces.finish();data.outdoorTrace=false;}
     if(data.teleporting){if(!this.getParadise?.()?.paused){const target=this.floorPoint(data);if(target){const head=this.syncHead();this.rig.position.x+=target.x-head.position.x;this.rig.position.z+=target.z-head.position.z;}}data.teleporting=false;}
     if(data.floorPoints?.length>=2)this.addFloorTrace(this.soundChoices[this.traceSound].sound,data.floorPoints);data.floorPoints=null;
     if(data.stroke){if(data.stroke.points.length<2)this.strokes=this.strokes.filter(s=>s!==data.stroke);data.stroke=null;this.rebuildInk();this.saveInk();}
@@ -239,6 +243,7 @@ export class BedroomXR {
       if(!left){this.cursor.visible=true;this.cursor.position.copy(hit?hit.point:this.ray.ray.at(2,new THREE.Vector3()));}
       if(data.held&&(data.squeeze||data.trigger)&&!this.menu.visible){const point=this.floorPoint(data);if(point)this.move(data.held,point.x,point.z);}
       if(data.teleporting){const point=this.floorPoint(data);if(point){this.teleport.visible=true;this.teleport.position.set(point.x,.025,point.z);}}
+      if(data.outdoorTrace&&data.trigger)this.getParadise().traces.sample(this.floorPoint(data));
       if(data.floorPoints&&data.trigger){const point=this.floorPoint(data);if(point){const last=data.floorPoints.at(-1);if(!last||Math.hypot(last[0]-point.x,last[1]-point.z)>.14)if(data.floorPoints.length<120)data.floorPoints.push([point.x,point.z]);this.teleport.visible=true;this.teleport.position.set(point.x,.03,point.z);}}
       if(!left&&!this.menu.visible&&this.mode==='draw'){
         data.grip.updateWorldMatrix(true,false);const point=new THREE.Vector3(0,0,-.12).applyMatrix4(data.grip.matrixWorld);this.tip.visible=true;this.tip.position.copy(point);

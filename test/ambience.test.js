@@ -1,3 +1,4 @@
+import {OutdoorTraces} from '../src/outdoor-traces.js';
 import {OutdoorObjects} from '../src/outdoor-objects.js';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
@@ -35,4 +36,17 @@ test('added objects have independent voices, bounded positions, relocation and c
  audio.setChannel(first.id,.2);audio.toggleChannel(first.id);assert.equal(audio.buses.get(first.id).gain.value,0);assert.ok(audio.buses.get(second.id).gain.value>0);camera.position.x=2;camera.updateMatrixWorld();objects.moveHere(first.id);assert.equal(first.group.position.x,2);assert.equal(audio.nodes.find(n=>n.id===first.id).pan.positionX.value,2);
  const node=audio.nodes.find(n=>n.id===first.id);objects.remove(first.id);assert.equal(node.pan.disconnected,true);assert.equal(audio.channels().some(c=>c.id===first.id),false);assert.equal(root.children.length,1);
  const birds=objects.add('birdhouse',{x:100,z:100});assert.ok(Math.abs(birds.group.position.x)<=13);assert.ok(audio.buses.has(birds.id));for(let i=0;i<30;i++)objects.add('tree');assert.equal(objects.items.length,16);assert.equal(objects.add('tree'),null);
+});
+
+test('outdoor traces move independent sounds along paths and change track without changing geometry',async()=>{
+ globalThis.AudioContext=Context;const audio=new ParadiseAmbience(),root=new THREE.Group(),traces=new OutdoorTraces(root,audio);await audio.start();
+ const item=traces.add('stream',[[0,4],[4,4]]),other=traces.add('birds',[[1,6],[3,6]]);assert.equal(traces.items.length,2);const points=JSON.stringify(item.points);traces.update(1);const voice=audio.instances.find(v=>v.id===item.id);assert.ok(voice.x>0&&voice.x<4);assert.equal(audio.nodes.find(v=>v.id===item.id).pan.positionX.value,voice.x);
+ audio.setChannel(item.id,.22);audio.toggleChannel(item.id);const oldId=item.id;traces.changeSound(item,1);assert.notEqual(item.id,oldId);assert.notEqual(item.sound,'stream');assert.equal(JSON.stringify(item.points),points);assert.equal(audio.mix.get(item.id).level,.22);assert.equal(audio.mix.get(item.id).muted,true);assert.ok(!audio.buses.has(oldId));
+ traces.remove(item);assert.equal(traces.items.length,1);assert.equal(audio.channels().some(c=>c.id===item.id),false);assert.ok(audio.channels().some(c=>c.id===other.id));
+});
+test('trace drawing rejects invalid or short paths and cancelling leaves no sound or preview',()=>{
+ globalThis.AudioContext=Context;const audio=new ParadiseAmbience(),root=new THREE.Group(),traces=new OutdoorTraces(root,audio);
+ assert.equal(traces.add('birds',[[0,4],[0,4.1]]),null);assert.equal(traces.add('birds',[[NaN,4],[1,4]]),null);assert.equal(traces.add('birds',[[100,4],[101,4]]),null);assert.equal(traces.add('unknown',[[0,4],[1,4]]),null);
+ traces.begin();traces.sample({x:0,z:4});traces.sample({x:1,z:4});assert.ok(traces.previewLine);traces.cancel();assert.equal(root.children.length,0);assert.equal(audio.instances.length,0);
+ traces.nextSound='birds';traces.begin();traces.sample({x:0,z:4});traces.sample({x:1,z:4});const item=traces.finish();assert.equal(item.sound,'birds');assert.equal(traces.draft,null);assert.equal(traces.previewLine,null);
 });
