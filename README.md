@@ -2,6 +2,8 @@
 
 A separate, static WebXR port of the bedroom sound playground. The existing ChatGPT Site is unchanged. Open the GitHub Pages URL in **Meta Quest Browser**, start listening, then choose **Enter VR · Quest**. Allow the browser's immersive VR prompt. HTTPS and a WebXR-capable browser are required; desktop browsers keep the original mouse/keyboard experience.
 
+**Live:** https://zhenga1.github.io/sound-room-webxr/ · **Source:** https://github.com/zhenga1/sound-room-webxr
+
 ## Quest controller controls
 
 | Control | Action |
@@ -42,7 +44,11 @@ npm run build
 
 ## Deploy to GitHub Pages
 
-Push this repository to GitHub on `main`. In **Settings → Pages → Build and deployment**, select **GitHub Actions**. The included workflow runs checks and tests, builds the app, and deploys `dist/`. Do not publish the neighboring `sound-room` directory; it contains separate evaluation assets and local state.
+The live site currently publishes from **`gh-pages` / root** using GitHub's branch-based Pages builder. Its checked static output was built locally because custom GitHub Actions jobs were blocked by an account billing lock. Future changes should run `npm run check`, `npm test`, and `npm run build`, then publish the contents of `dist/` to the root of `gh-pages` (including `.nojekyll`). Source changes on `main` alone do not update that branch.
+
+The included optional Actions workflow can build/deploy automatically once the account can run custom jobs. To use it, change **Settings → Pages → Build and deployment → Source** to **GitHub Actions**, then run **Deploy WebXR to Pages**. The earlier failed custom workflow is an account restriction, not a build/test failure. The branch-based Pages deployment succeeds independently.
+
+Do not publish the neighboring `sound-room` directory; it contains separate evaluation assets and local state.
 
 ## Verification
 
