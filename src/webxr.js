@@ -27,7 +27,7 @@ export class BedroomXR {
       const handle=new THREE.Mesh(new THREE.CapsuleGeometry(.025,.09,3,8),new THREE.MeshStandardMaterial({color:'#c9d5cf',roughness:.6}));handle.rotation.x=Math.PI/3;grip.add(handle);
       const data={controller,grip,beam,source:null,trigger:false,squeeze:false,buttons:[],stroke:null,floorPoints:null,held:null,hover:null};this.controls.push(data);
       controller.addEventListener('connected',e=>{data.source=e.data;});
-      controller.addEventListener('disconnected',()=>{this.getParadise?.()?.objects?.endDrag(data);data.outdoorDrag=false;if(data.outdoorTrace){this.getParadise().traces.cancel();data.outdoorTrace=false;}this.finish(data);data.source=null;data.trigger=false;data.squeeze=false;});
+      controller.addEventListener('disconnected',()=>{if(data.restSketch){this.getRest?.()?.cancel();data.restSketch=false;}this.getParadise?.()?.objects?.endDrag(data);data.outdoorDrag=false;if(data.outdoorTrace){this.getParadise().traces.cancel();data.outdoorTrace=false;}this.finish(data);data.source=null;data.trigger=false;data.squeeze=false;});
       controller.addEventListener('selectstart',()=>{data.trigger=true;this.press(data);});
       controller.addEventListener('selectend',()=>{data.trigger=false;this.finish(data);});
       controller.addEventListener('squeezestart',()=>{data.squeeze=true;this.grab(data);});
@@ -51,6 +51,7 @@ export class BedroomXR {
     }catch(error){this.toast(`Could not enter VR: ${error.message}`);console.error(error);}finally{button.disabled=false;}
   }
   begin(){
+    this.getRest?.()?.leave();
     const choice=this.soundChoices.findIndex(item=>item.sound===this.getNextTraceSound?.());if(choice>=0)this.traceSound=choice;this.buildMenu();
     this.desktop={position:this.camera.position.clone(),quaternion:this.camera.quaternion.clone(),shadow:this.renderer.shadowMap.enabled};
     this.rig.position.set(this.camera.position.x,0,this.camera.position.z);this.rig.rotation.set(0,this.camera.rotation.y,0);
@@ -59,6 +60,7 @@ export class BedroomXR {
     this.keys.clear();this.menuPending=true;this.syncHead();this.menuDock.visible=true;
   }
   end(){
+    this.getRest?.()?.leave();
     for(const data of this.controls){this.getParadise?.()?.objects?.endDrag(data);data.outdoorDrag=false;if(data.outdoorTrace){this.getParadise().traces.cancel();data.outdoorTrace=false;}this.finish(data);data.held=null;data.trigger=false;data.squeeze=false;data.buttons=[];}
     this.scene.add(this.camera);if(this.desktop){this.camera.position.copy(this.desktop.position);this.camera.quaternion.copy(this.desktop.quaternion);this.renderer.shadowMap.enabled=this.desktop.shadow;}
     this.rig.position.set(0,0,0);this.rig.rotation.set(0,0,0);this.menu.visible=false;this.tip.visible=false;this.teleport.visible=false;this.menuDock.visible=false;this.cursor.visible=false;document.body.classList.remove('in-xr');this.keys.clear();
@@ -69,6 +71,7 @@ export class BedroomXR {
     this.worldHead.position.copy(this.position);this.worldHead.quaternion.copy(this.rotation);this.worldHead.updateMatrixWorld();return this.worldHead;
   }
   showMenu(){
+    if(this.getRest?.()?.active){this.getRest().cancel();for(const data of this.controls)data.restSketch=false;}
     const head=this.syncHead(),forward=new THREE.Vector3(0,0,-1).applyQuaternion(head.quaternion);forward.y=0;forward.normalize();
     this.menu.position.copy(head.position).addScaledVector(forward,1.55);this.menu.position.y=Math.max(1.25,head.position.y);
     this.menu.rotation.set(0,Math.atan2(forward.x,forward.z)+Math.PI,0);this.menu.visible=true;this.refreshMenu();
@@ -95,8 +98,20 @@ export class BedroomXR {
     for(const child of [...this.menu.children]){child.geometry?.dispose();child.material?.dispose();this.menu.remove(child);}for(const t of this.textures)t.dispose();this.textures=[];this.buttons=[];
     const back=new THREE.Mesh(new THREE.PlaneGeometry(2.3,2.25),new THREE.MeshBasicMaterial({color:'#0d1b22',side:THREE.DoubleSide}));this.menu.add(back);
     this.label('SOUND ROOM / QUEST',0,1,2.15,.12);this.statusLabel=this.label('',0,.85,2.15,.1);
-    ['sound','traces','view','objects','eden','controls'].forEach((panel,i)=>this.label(panel.toUpperCase(),(i-2.5)*.37,.67,.35,.14,()=>{this.panel=panel;this.buildMenu();},panel===this.panel?'#466338':'#1e3036'));
-    if(this.panel==='eden'){
+    ['sound','traces','rest','view','objects','eden','controls'].forEach((panel,i)=>this.label(panel.toUpperCase(),(i-3)*.32,.67,.3,.14,()=>{this.panel=panel;this.buildMenu();},panel===this.panel?'#466338':'#1e3036'));
+    if(this.panel==='rest'){
+      const rest=this.getRest?.();if(this.getParadise?.()?.active)this.label('Return to the bedroom to rest on the bed',0,.4,2.1,.15);
+      else if(rest){
+        this.label(rest.active?'Resting on the bed':'Enjoy the room from bed',0,.44,2.1,.14);
+        this.label(rest.active?'Get up':'Rest on bed',0,.23,2.1,.17,()=>{if(rest.active)rest.leave();else{rest.enter();if(rest.active)void this.startAudio?.();}this.buildMenu();});
+        this.label('Sketch: '+(this.soundChoices.find(c=>c.sound===rest.sound)?.name||rest.sound),0,.02,2.1,.12);
+        this.label('Previous sound',-.55,-.16,1.05,.13,()=>{const i=this.soundChoices.findIndex(c=>c.sound===rest.sound);rest.sound=this.soundChoices[(i-1+this.soundChoices.length)%this.soundChoices.length].sound;this.buildMenu();});
+        this.label('Next sound',.55,-.16,1.05,.13,()=>{const i=this.soundChoices.findIndex(c=>c.sound===rest.sound);rest.sound=this.soundChoices[(i+1)%this.soundChoices.length].sound;this.buildMenu();});
+        this.label('Draw sound sketch',-.55,-.37,1.05,.15,()=>{if(!rest.active)rest.enter();if(rest.active){rest.setSketching(true);this.menu.visible=false;}});
+        this.label('Just listen',.55,-.37,1.05,.15,()=>{rest.setSketching(false);this.menu.visible=false;});
+        this.label('Undo sound sketch',0,-.58,2.1,.13,()=>{rest.undo();this.buildMenu();});
+      }
+    }else if(this.panel==='eden'){
       const paradise=this.getParadise?.();
       if(paradise){
         if(!paradise.active)this.label('Open the bedroom door to explore Inner Eden',0,.43,2.15,.14,()=>paradise.open(true));
@@ -176,15 +191,15 @@ export class BedroomXR {
     this.label('Sticks work with menu open · A / stick click: menu',0,-.96,2.15,.08);
     this.label('B: mode · X: undo · L trigger: teleport · Grip: move',0,-1.07,2.15,.08);this.refreshMenu();
   }
-  soundEntries(){const paradise=this.getParadise?.();if(paradise?.active)return paradise.ambience.channels().map(item=>({...item,name:item.label,outdoor:true}));return [...(this.getSources?.()||[]).filter(s=>s.sound),...(this.getTraces?.()||[]).map(t=>({...t,name:(this.soundChoices.find(s=>s.sound===t.sound)?.name||t.sound)+' trace'}))];}
+  soundEntries(){const paradise=this.getParadise?.();if(paradise?.active)return paradise.ambience.channels().map(item=>({...item,name:item.label,outdoor:true}));return [...(this.getSources?.()||[]).filter(s=>s.sound),...(this.getRest?.()?.sketches||[]),...(this.getTraces?.()||[]).map(t=>({...t,name:(this.soundChoices.find(s=>s.sound===t.sound)?.name||t.sound)+' trace'}))];}
   chooseNextTrace(delta){this.traceSound=(this.traceSound+delta+this.soundChoices.length)%this.soundChoices.length;this.setNextTraceSound?.(this.soundChoices[this.traceSound].sound);this.buildMenu();}
   chooseTraceSound(trace,delta){const index=this.soundChoices.findIndex(item=>item.sound===trace.sound);const sound=this.soundChoices[(index+delta+this.soundChoices.length)%this.soundChoices.length].sound;this.changeTraceSound?.(trace,sound);this.buildMenu();}
-  cycleMode(){this.mode=this.mode==='draw'?'trace':this.mode==='trace'?'move':'draw';this.buildMenu();}
+  cycleMode(){if(this.getRest?.()?.active){const rest=this.getRest();rest.setSketching(!rest.sketching);this.buildMenu();return;}this.mode=this.mode==='draw'?'trace':this.mode==='trace'?'move':'draw';this.buildMenu();}
   volumeItem(item,delta){if(item.outdoor){this.getParadise().ambience.setChannel(item.id,item.level+delta/100);return;}const input=item.row.querySelector('input');if(input){input.value=Math.max(0,Math.min(100,Number(input.value)+delta));input.dispatchEvent(new Event('input'));}}
   turn(angle){const head=this.syncHead().position.clone(),q=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),angle);this.rig.position.sub(head).applyQuaternion(q).add(head);this.rig.quaternion.premultiply(q);}
-  dolly(distance){const head=this.syncHead(),forward=new THREE.Vector3(0,0,-1).applyQuaternion(head.quaternion);forward.y=0;forward.normalize();this.rig.position.addScaledVector(forward,distance);this.clampPosition();}
-  clampPosition(){const head=this.syncHead(),paradise=this.getParadise?.(),position=paradise?paradise.clamp(head.position.x,head.position.z):{x:THREE.MathUtils.clamp(head.position.x,-5.35,5.35),z:THREE.MathUtils.clamp(head.position.z,-5.35,5.35)};this.rig.position.x+=position.x-head.position.x;this.rig.position.z+=position.z-head.position.z;if(paradise)this.rig.position.y=paradise.height(position.x,position.z);}
-  hitUI(data){this.controllerRay(data);const targets=this.menu.visible?[...this.buttons]:[];if(this.menuDock.visible)targets.push(this.dockButton);for(const door of this.getPortalTargets?.()||[])if(door)targets.push(door);this.menu.updateWorldMatrix(true,true);this.menuDock.updateWorldMatrix(true,true);return this.ray.intersectObjects(targets)[0];}
+  dolly(distance){if(this.getRest?.()?.active)return;const head=this.syncHead(),forward=new THREE.Vector3(0,0,-1).applyQuaternion(head.quaternion);forward.y=0;forward.normalize();this.rig.position.addScaledVector(forward,distance);this.clampPosition();}
+  clampPosition(){if(this.getRest?.()?.active)return;const head=this.syncHead(),paradise=this.getParadise?.(),position=paradise?paradise.clamp(head.position.x,head.position.z):{x:THREE.MathUtils.clamp(head.position.x,-5.35,5.35),z:THREE.MathUtils.clamp(head.position.z,-5.35,5.35)};this.rig.position.x+=position.x-head.position.x;this.rig.position.z+=position.z-head.position.z;if(paradise)this.rig.position.y=paradise.height(position.x,position.z);}
+  hitUI(data){this.controllerRay(data);const targets=this.menu.visible?[...this.buttons]:[];if(this.menuDock.visible)targets.push(this.dockButton);for(const door of (this.getRest?.()?.active?[]:this.getPortalTargets?.()||[]))if(door)targets.push(door);this.menu.updateWorldMatrix(true,true);this.menuDock.updateWorldMatrix(true,true);return this.ray.intersectObjects(targets)[0];}
   refreshMenu(){
     if(!this.statusLabel)return;const text=`${this.mode.toUpperCase()} | ${this.selected?.name||'No object selected'} | ${this.engine.preset} | trace: ${this.soundChoices[this.traceSound]?.name||'Bird'}`;
     const old=this.statusLabel.material.map;const texture=this.textTexture(text,'#243e43');this.statusLabel.material.map=texture;const index=this.textures.indexOf(old);if(index>=0)this.textures[index]=texture;old.dispose();
@@ -196,6 +211,7 @@ export class BedroomXR {
     const button=this.hitUI(data);
     if(button){if(button.object.userData.portal)button.object.userData.portal();else button.object.userData.action?.();return;}
     if(this.menu.visible||data.outdoorDrag)return;
+    const rest=this.getRest?.();if(rest?.active){if(data.source?.handedness==='right'&&rest.sketching)data.restSketch=rest.begin();return;}
     if(data.source?.handedness==='left'){data.teleporting=true;return;}
     if(this.getParadise?.()?.active&&this.mode==='trace'){data.outdoorTrace=this.getParadise().traces.begin();return;}
     if(this.getParadise?.()?.active){this.panel='eden';this.buildMenu();this.showMenu();return;}
@@ -205,10 +221,12 @@ export class BedroomXR {
     data.stroke={color:colors[this.color],width:this.width,points:[]};this.strokes.push(data.stroke);
   }
   grab(data){
+    if(this.getRest?.()?.active)return;
     if(this.menu.visible)return;const paradise=this.getParadise?.();if(paradise?.active){if(!data.outdoorTrace){this.controllerRay(data);data.outdoorDrag=paradise.objects.beginDrag(this.ray,data);}return;}this.controllerRay(data);const hit=this.ray.intersectObjects(this.pickables).find(h=>!h.object.userData.source?.removed);
     if(hit){data.held=hit.object.userData.source;this.selected=data.held;this.refreshMenu();}
   }
   finish(data){
+    if(data.restSketch){this.getRest().finish();data.restSketch=false;}
     if(data.outdoorTrace){this.getParadise().traces.finish();data.outdoorTrace=false;}
     if(data.teleporting){if(!this.getParadise?.()?.paused){const target=this.floorPoint(data);if(target){const head=this.syncHead();this.rig.position.x+=target.x-head.position.x;this.rig.position.z+=target.z-head.position.z;}}data.teleporting=false;}
     if(data.floorPoints?.length>=2)this.addFloorTrace(this.soundChoices[this.traceSound].sound,data.floorPoints);data.floorPoints=null;
@@ -233,8 +251,8 @@ export class BedroomXR {
     let inkChanged=false;this.teleport.visible=false;this.tip.visible=false;
     for(const data of this.controls){
       if(!data.source)continue;const gamepad=data.source.gamepad,[x,y]=thumbstick(gamepad),left=data.source.handedness==='left';
-      if(left&&!this.getParadise?.()?.paused){const right=new THREE.Vector3().crossVectors(forward,new THREE.Vector3(0,1,0));this.rig.position.addScaledVector(forward,-y*dt*1.6).addScaledVector(right,x*dt*1.6);}
-      if(!left){if(Math.abs(x)<.3)this.snapReady=true;if(Math.abs(x)>.75&&this.snapReady){this.turn(-Math.sign(x)*Math.PI/6);this.snapReady=false;}}
+      if(left&&!this.getRest?.()?.active&&!this.getParadise?.()?.paused){const right=new THREE.Vector3().crossVectors(forward,new THREE.Vector3(0,1,0));this.rig.position.addScaledVector(forward,-y*dt*1.6).addScaledVector(right,x*dt*1.6);}
+      if(!left&&!this.getRest?.()?.active){if(Math.abs(x)<.3)this.snapReady=true;if(Math.abs(x)>.75&&this.snapReady){this.turn(-Math.sign(x)*Math.PI/6);this.snapReady=false;}}
       const buttons=gamepad?.buttons||[];for(const [index,action] of [[3,()=>this.toggleMenu()],[4,left?()=>this.undo():()=>this.toggleMenu()],[5,left?()=>{this.color=(this.color+1)%colors.length;this.tip.material.color.set(colors[this.color]);}:()=>this.cycleMode()]]){
         const pressed=!!buttons[index]?.pressed;if(pressed&&!data.buttons[index])action();data.buttons[index]=pressed;
       }
@@ -244,9 +262,10 @@ export class BedroomXR {
       if(data.outdoorDrag){const world=this.getParadise?.();if(!world?.active||this.menu.visible||!data.squeeze||!gamepad?.buttons?.[1]?.pressed){world?.objects.endDrag(data);data.outdoorDrag=false;}else{this.controllerRay(data);world.objects.drag(this.ray,data);}}
       if(data.held&&(data.squeeze||data.trigger)&&!this.menu.visible){const point=this.floorPoint(data);if(point)this.move(data.held,point.x,point.z);}
       if(data.teleporting){const point=this.floorPoint(data);if(point){this.teleport.visible=true;this.teleport.position.set(point.x,.025,point.z);}}
+      if(data.restSketch&&data.trigger&&!this.menu.visible){this.controllerRay(data);this.getRest().sample(this.ray.ray.at(1.1,new THREE.Vector3()));}
       if(data.outdoorTrace&&data.trigger)this.getParadise().traces.sample(this.floorPoint(data));
       if(data.floorPoints&&data.trigger){const point=this.floorPoint(data);if(point){const last=data.floorPoints.at(-1);if(!last||Math.hypot(last[0]-point.x,last[1]-point.z)>.14)if(data.floorPoints.length<120)data.floorPoints.push([point.x,point.z]);this.teleport.visible=true;this.teleport.position.set(point.x,.03,point.z);}}
-      if(!left&&!this.menu.visible&&this.mode==='draw'){
+      if(!left&&!this.getRest?.()?.active&&!this.menu.visible&&this.mode==='draw'){
         data.grip.updateWorldMatrix(true,false);const point=new THREE.Vector3(0,0,-.12).applyMatrix4(data.grip.matrixWorld);this.tip.visible=true;this.tip.position.copy(point);
         if(data.stroke&&data.trigger&&this.inkPointCount<MAX_POINTS&&Math.abs(point.x)<5.8&&Math.abs(point.z)<5.8&&point.y>.05&&point.y<8){if(samplePoint(data.stroke.points,point.toArray())){this.inkPointCount++;inkChanged=true;}}
       }

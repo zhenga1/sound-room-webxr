@@ -1,3 +1,4 @@
+import {BedRest} from './bed-rest.js';
 import * as THREE from 'three';
 import { PublicSoundEngine } from './public-audio.js';
 import { BedroomXR } from './webxr.js';
@@ -6,7 +7,7 @@ import {ParadisePortal} from './paradise-portal.js';
 import { catalog, bedroom, buildObject } from './objects.js';
 import { closestPointOnTrace, pointAlongTrace, traceLength, traceVisualStyle } from './traces.js';
 const $=s=>document.querySelector(s), engine=new PublicSoundEngine();
-const sources=[],traces=[],keys=new Set();let nextId=1,nextTraceId=1,paradise=null;
+const sources=[],traces=[],keys=new Set();let nextId=1,nextTraceId=1,paradise=null,rest=null;
 const scene=new THREE.Scene(); scene.background=new THREE.Color('#172329'); scene.fog=new THREE.FogExp2('#172329',.045);
 const camera=new THREE.PerspectiveCamera(62,innerWidth/innerHeight,.08,65); camera.rotation.order='YXZ';
 const renderer=new THREE.WebGLRenderer({antialias:true}); renderer.setSize(innerWidth,innerHeight); renderer.setPixelRatio(Math.min(devicePixelRatio,2));
@@ -110,22 +111,22 @@ function mount(s){
   $('#tracks').append(row);s.row=row;
   const dot=document.createElementNS('http://www.w3.org/2000/svg','circle');dot.setAttribute('r',7);dot.setAttribute('fill',s.color);dot.dataset.id=s.id;dot.innerHTML=`<title>${s.name}: drag to move</title>`;$('#map-dots').append(dot);s.dot=dot;
 }
-function move(s,x,z){s.x=THREE.MathUtils.clamp(x,-6+s.radius,6-s.radius);s.z=THREE.MathUtils.clamp(z,-6+s.radius,6-s.radius);s.group.position.set(s.x,0,s.z);engine.move(s);saveLayout();}
+function move(s,x,z){if(rest?.active)return;s.x=THREE.MathUtils.clamp(x,-6+s.radius,6-s.radius);s.z=THREE.MathUtils.clamp(z,-6+s.radius,6-s.radius);s.group.position.set(s.x,0,s.z);engine.move(s);saveLayout();}
 let comparisonTimer,toastTimer;
 function toast(text){$('#toast').textContent=text;$('#toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.remove('show'),3500);}
 function setPreset(name){engine.setPreset(name);for(const n of ['studio','cathedral']){$('#'+n).classList.toggle('active',n===name);$('#'+n).setAttribute('aria-pressed',n===name);}cathedral.visible=name==='cathedral';architecture.scale.y=name==='cathedral'?2.5:1;$('#acoustic-note').textContent=name==='cathedral'?'Long reflections · 5.5 s tail':'Short reflections · 0.35 s tail';scene.fog.density=name==='cathedral'?.028:.045;}
 for(const name of ['studio','cathedral'])$('#'+name).onclick=()=>{clearTimeout(comparisonTimer);$('#compare').disabled=false;$('#compare').textContent='↔ Hear the before / after';setPreset(name);toast(name==='studio'?'Small studio · intimate & dry':'Large cathedral · same performance, different space');};
-async function start(){try{await engine.start(sources,traces);$('#welcome').classList.add('hidden');syncPlayback();}catch(e){toast('Audio could not start. Please retry.');console.error(e);}}
+async function start(){try{await engine.start(sources,[...traces,...(rest?.sketches||[])]);$('#welcome').classList.add('hidden');syncPlayback();}catch(e){toast('Audio could not start. Please retry.');console.error(e);}}
 function syncPlayback(){$('#sound').textContent=engine.playing?'Ⅱ Pause listening':'▶ Start listening';$('#status').textContent=engine.playing?'LIVE / SPATIAL AUDIO':'PAUSED';}
 $('#enter').onclick=start;
-$('#sound').onclick=async()=>{try{await engine.toggle(sources,traces);syncPlayback();}catch(e){toast('Unable to start audio. Please retry.');console.error(e);}};
+$('#sound').onclick=async()=>{try{await engine.toggle(sources,[...traces,...(rest?.sketches||[])]);syncPlayback();}catch(e){toast('Unable to start audio. Please retry.');console.error(e);}};
 $('#compare').onclick=async()=>{if(!engine.playing){await start();if(!engine.playing)return;}setPreset('studio');toast('Before: small studio. Listen to the dry notes…');$('#compare').disabled=true;$('#compare').textContent='Listening to the studio…';comparisonTimer=setTimeout(()=>{setPreset('cathedral');toast('After: large cathedral. Same loops, longer reflections.');$('#compare').disabled=false;$('#compare').textContent='↔ Hear the before / after';},4500);};
 function resetCamera(){camera.position.set(0,1.7,5);camera.rotation.set(-.08,0,0);}
 resetCamera();
-$('#reset').onclick=()=>{clearTimeout(comparisonTimer);$('#compare').disabled=false;$('#compare').textContent='↔ Hear the before / after';for(const s of [...sources])removeObject(s,false);for(const t of [...traces])removeTrace(t,false);setDrawMode(false);for(const item of bedroom)addObject(item.type,item,false);setPreset('studio');resetCamera();saveLayout();saveTraces();toast('Bedroom restored. Add objects or draw traces to make it yours.');};
+$('#reset').onclick=()=>{rest?.leave();clearTimeout(comparisonTimer);$('#compare').disabled=false;$('#compare').textContent='↔ Hear the before / after';for(const s of [...sources])removeObject(s,false);for(const t of [...traces])removeTrace(t,false);setDrawMode(false);for(const item of bedroom)addObject(item.type,item,false);setPreset('studio');resetCamera();saveLayout();saveTraces();toast('Bedroom restored. Add objects or draw traces to make it yours.');};
 $('#help').onclick=()=>$('#help-dialog').showModal();$('#close-help').onclick=()=>$('#help-dialog').close();
 const movement=new MovementInput(keys);
-const canWalk=()=>!renderer.xr.isPresenting&&!paradise?.paused&&!engine.mixerOpen&&$('#welcome').classList.contains('hidden')&&!$('#eden-dialog').open&&!$('#help-dialog').open&&!$('#library').open&&document.visibilityState!=='hidden'&&document.hasFocus()&&!isEditing(document.activeElement);
+const canWalk=()=>!rest?.active&&!renderer.xr.isPresenting&&!paradise?.paused&&!engine.mixerOpen&&$('#welcome').classList.contains('hidden')&&!$('#eden-dialog').open&&!$('#help-dialog').open&&!$('#library').open&&document.visibilityState!=='hidden'&&document.hasFocus()&&!isEditing(document.activeElement);
 addEventListener('keydown',e=>movement.down(e,canWalk()),true);
 addEventListener('keyup',e=>movement.up(e),true);
 const cancelMovement=()=>{movement.clear();drag=null;looking=false;};
@@ -136,7 +137,7 @@ document.addEventListener('focusin',e=>{if(isEditing(e.target))cancelMovement();
 const raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2(),floor=new THREE.Plane(new THREE.Vector3(0,1,0),0),hit=new THREE.Vector3();let drag=null,looking=false,lastX=0,lastY=0;
 function ray(e){pointer.set(e.clientX/innerWidth*2-1,-e.clientY/innerHeight*2+1);raycaster.setFromCamera(pointer,camera);}
 renderer.domElement.addEventListener('contextmenu',e=>e.preventDefault());
-renderer.domElement.addEventListener('pointerdown',e=>{if(engine.mixerOpen||!$('#welcome').classList.contains('hidden'))return;ray(e);const portal=raycaster.intersectObjects(paradise?.hits||[])[0];if(portal){portal.object.userData.portal();return;}if(e.button===2){looking=true;lastX=e.clientX;lastY=e.clientY;renderer.domElement.setPointerCapture(e.pointerId);return;}if(document.pointerLockElement)return;ray(e);const hits=raycaster.intersectObjects(pickables);if(hits.length){drag=hits[0].object.userData.source;renderer.domElement.setPointerCapture(e.pointerId);toast(`Moving ${drag.name}. Drag across the floor.`);}else renderer.domElement.requestPointerLock?.()?.catch?.(()=>toast('Hold right mouse and drag to look around.'));});
+renderer.domElement.addEventListener('pointerdown',e=>{if(engine.mixerOpen||!$('#welcome').classList.contains('hidden'))return;ray(e);const portal=!rest?.active&&raycaster.intersectObjects(paradise?.hits||[])[0];if(portal){portal.object.userData.portal();return;}if(e.button===2){looking=true;lastX=e.clientX;lastY=e.clientY;renderer.domElement.setPointerCapture(e.pointerId);return;}if(document.pointerLockElement)return;if(rest?.active){renderer.domElement.requestPointerLock?.();return;}ray(e);const hits=raycaster.intersectObjects(pickables);if(hits.length){drag=hits[0].object.userData.source;renderer.domElement.setPointerCapture(e.pointerId);toast(`Moving ${drag.name}. Drag across the floor.`);}else renderer.domElement.requestPointerLock?.()?.catch?.(()=>toast('Hold right mouse and drag to look around.'));});
 addEventListener('pointermove',e=>{if(engine.mixerOpen)return;if(document.pointerLockElement===renderer.domElement){camera.rotation.y-=e.movementX*.002;camera.rotation.x=THREE.MathUtils.clamp(camera.rotation.x-e.movementY*.002,-1.1,1.1);}else if(looking){camera.rotation.y-=(e.clientX-lastX)*.004;camera.rotation.x=THREE.MathUtils.clamp(camera.rotation.x-(e.clientY-lastY)*.004,-1.1,1.1);lastX=e.clientX;lastY=e.clientY;}else if(drag){ray(e);if(raycaster.ray.intersectPlane(floor,hit))move(drag,hit.x,hit.z);}});
 addEventListener('pointerup',()=>{drag=null;looking=false;});document.addEventListener('pointerlockchange',()=>{document.body.classList.toggle('locked',document.pointerLockElement===renderer.domElement);keys.clear();});
 const traceChoices=catalog.filter(item=>item.sound);
@@ -281,7 +282,7 @@ map.addEventListener('pointercancel',()=>{if(draft){unmountTraceVisual(draft);dr
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
 const clock=new THREE.Clock(),v=new THREE.Vector3(),proj=new THREE.Vector3();let elapsed=0;
 function frame(){const dt=Math.min(clock.getDelta(),.05);elapsed+=dt;movement.tick(canWalk());const view=xr.update(dt);
-  if(!renderer.xr.isPresenting&&!engine.mixerOpen&&!$('#help-dialog').open&&!$('#library').open){const f=Number(keys.has('KeyW')||keys.has('ArrowUp'))-Number(keys.has('KeyS')||keys.has('ArrowDown')),r=Number(keys.has('KeyD')||keys.has('ArrowRight'))-Number(keys.has('KeyA')||keys.has('ArrowLeft'));v.set(r,0,-f);if(v.lengthSq()){v.normalize().applyAxisAngle(new THREE.Vector3(0,1,0),camera.rotation.y).multiplyScalar(dt*2.5);camera.position.add(v);const bounds=paradise.clamp(camera.position.x,camera.position.z);camera.position.x=bounds.x;camera.position.z=bounds.z;camera.position.y=1.7+paradise.height(bounds.x,bounds.z);}}
+  if(!rest?.active&&!renderer.xr.isPresenting&&!engine.mixerOpen&&!$('#help-dialog').open&&!$('#library').open){const f=Number(keys.has('KeyW')||keys.has('ArrowUp'))-Number(keys.has('KeyS')||keys.has('ArrowDown')),r=Number(keys.has('KeyD')||keys.has('ArrowRight'))-Number(keys.has('KeyA')||keys.has('ArrowLeft'));v.set(r,0,-f);if(v.lengthSq()){v.normalize().applyAxisAngle(new THREE.Vector3(0,1,0),camera.rotation.y).multiplyScalar(dt*2.5);camera.position.add(v);const bounds=paradise.clamp(camera.position.x,camera.position.z);camera.position.x=bounds.x;camera.position.z=bounds.z;camera.position.y=1.7+paradise.height(bounds.x,bounds.z);}}
   for(const s of sources)if(s.type==='bird'&&s.birds){
     // One bird is always nearby. Two companions visit on staggered cycles.
     const present=[true,Math.sin(elapsed*.13-.7)>.15,Math.sin(elapsed*.09-2.3)>.42];
@@ -326,6 +327,7 @@ function addObject(type,options={},persist=true){
   return s;
 }
 function removeObject(s,persist=true){
+  if(rest?.active&&s.type==='bed')rest.leave();
   s.removed=true;engine.remove(s);if(drag===s)drag=null;if(mapDrag===s)mapDrag=null;
   for(let i=pickables.length-1;i>=0;i--)if(pickables[i].userData.source===s)pickables.splice(i,1);
   scene.remove(s.group);s.group.traverse(o=>{o.geometry?.dispose();});s.row.remove();s.dot.remove();s.label.remove();sources.splice(sources.indexOf(s),1);updateCount();if(persist)saveLayout();
@@ -360,10 +362,16 @@ try{
 updateTraceCount();saveTraces();
 
 paradise=new ParadisePortal({scene,camera,door,engine,sources,toast,keys});
-const xr=new BedroomXR({getParadise:()=>paradise,getPortalTargets:()=>paradise.hits,scene,camera,renderer,engine,keys,pickables,catalog,soundChoices:traceChoices,toast,addObject,removeObject,move,saveLayout,setPreset,getSources:()=>sources,getTraces:()=>traces,changeTraceSound,removeTrace,getNextTraceSound:()=>$('#trace-sound').value,setNextTraceSound:sound=>{$('#trace-sound').value=sound;},toggleAudio:()=>$('#sound').click(),
+const xr=new BedroomXR({getRest:()=>rest,getParadise:()=>paradise,getPortalTargets:()=>paradise.hits,scene,camera,renderer,engine,keys,pickables,catalog,soundChoices:traceChoices,toast,addObject,removeObject,move,saveLayout,setPreset,getSources:()=>sources,getTraces:()=>traces,changeTraceSound,removeTrace,getNextTraceSound:()=>$('#trace-sound').value,setNextTraceSound:sound=>{$('#trace-sound').value=sound;},toggleAudio:()=>$('#sound').click(),
   startAudio:async()=>{await start();if(!engine.playing)throw new Error('Audio could not start. Try Start listening first.');},
   addFloorTrace:(sound,points)=>{if(traces.length>=12){toast('Maximum of 12 sound traces.');return;}if(traceLength(points)<.55)return;addTrace({id:`trace-${nextTraceId++}`,sound,points,x:points[0][0],z:points[0][1],volume:.3,muted:false});}
 });
+rest=new BedRest({scene,camera,engine,getBeds:()=>sources,getXR:()=>xr,keys,toast,choices:traceChoices});
+rest.bindDesktop(renderer.domElement);
+for(const choice of traceChoices){const option=document.createElement('option');option.value=choice.sound;option.textContent=choice.name;$('#rest-sound').append(option);}$('#rest-sound').value='bird';$('#rest-sound').onchange=e=>{rest.sound=e.target.value;};
+$('#rest-toggle').onclick=()=>{if(rest.active)rest.leave();else{if(paradise.active){toast('Return to the bedroom to rest on the bed.');return;}cancelMovement();if(document.pointerLockElement)document.exitPointerLock();rest.enter();if(rest.active)void start();}};
+$('#rest-vr').onclick=()=>$('#enter-vr').click();
+$('#rest-get-up').onclick=()=>rest.leave();$('#rest-draw').onclick=()=>rest.setSketching(!rest.sketching);$('#rest-undo').onclick=()=>rest.undo();$('#rest-mix').onclick=()=>document.body.classList.toggle('rest-mixing');
 paradise.objects.bindDesktop(renderer.domElement,camera,()=>paradise.active&&!renderer.xr.isPresenting&&!paradise.traces.armed);
 paradise.traces.bindDesktop(renderer.domElement,camera,()=>paradise.active&&!renderer.xr.isPresenting);
 renderer.setAnimationLoop(frame);
