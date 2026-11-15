@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { PublicSoundEngine } from './public-audio.js';
 import { BedroomXR } from './webxr.js';
+import {MovementInput,isEditing} from './movement-input.js';
 import { catalog, bedroom, buildObject } from './objects.js';
 import { closestPointOnTrace, pointAlongTrace, traceLength, traceVisualStyle } from './traces.js';
 const $=s=>document.querySelector(s), engine=new PublicSoundEngine();
@@ -122,7 +123,15 @@ function resetCamera(){camera.position.set(0,1.7,5);camera.rotation.set(-.08,0,0
 resetCamera();
 $('#reset').onclick=()=>{clearTimeout(comparisonTimer);$('#compare').disabled=false;$('#compare').textContent='↔ Hear the before / after';for(const s of [...sources])removeObject(s,false);for(const t of [...traces])removeTrace(t,false);setDrawMode(false);for(const item of bedroom)addObject(item.type,item,false);setPreset('studio');resetCamera();saveLayout();saveTraces();toast('Bedroom restored. Add objects or draw traces to make it yours.');};
 $('#help').onclick=()=>$('#help-dialog').showModal();$('#close-help').onclick=()=>$('#help-dialog').close();
-addEventListener('keydown',e=>{if(!engine.mixerOpen&&$('#welcome').classList.contains('hidden')&&!$('#help-dialog').open&&!$('#library').open&&!['BUTTON','INPUT'].includes(document.activeElement.tagName)){if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)){e.preventDefault();keys.add(e.code);}}});addEventListener('keyup',e=>keys.delete(e.code));addEventListener('blur',()=>{keys.clear();drag=null;looking=false;});
+const movement=new MovementInput(keys);
+const canWalk=()=>!renderer.xr.isPresenting&&!engine.mixerOpen&&$('#welcome').classList.contains('hidden')&&!$('#help-dialog').open&&!$('#library').open&&document.visibilityState!=='hidden'&&document.hasFocus()&&!isEditing(document.activeElement);
+addEventListener('keydown',e=>movement.down(e,canWalk()),true);
+addEventListener('keyup',e=>movement.up(e),true);
+const cancelMovement=()=>{movement.clear();drag=null;looking=false;};
+addEventListener('blur',cancelMovement,true);addEventListener('pagehide',cancelMovement,true);
+document.addEventListener('visibilitychange',cancelMovement,true);
+document.addEventListener('freeze',cancelMovement,true);
+document.addEventListener('focusin',e=>{if(isEditing(e.target))cancelMovement();},true);
 const raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2(),floor=new THREE.Plane(new THREE.Vector3(0,1,0),0),hit=new THREE.Vector3();let drag=null,looking=false,lastX=0,lastY=0;
 function ray(e){pointer.set(e.clientX/innerWidth*2-1,-e.clientY/innerHeight*2+1);raycaster.setFromCamera(pointer,camera);}
 renderer.domElement.addEventListener('contextmenu',e=>e.preventDefault());
@@ -269,7 +278,7 @@ map.addEventListener('pointerup',e=>{
 map.addEventListener('pointercancel',()=>{if(draft){unmountTraceVisual(draft);draft=null;}mapDrag=null;});
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
 const clock=new THREE.Clock(),v=new THREE.Vector3(),proj=new THREE.Vector3();let elapsed=0;
-function frame(){const dt=Math.min(clock.getDelta(),.05);elapsed+=dt;const view=xr.update(dt);
+function frame(){const dt=Math.min(clock.getDelta(),.05);elapsed+=dt;movement.tick(canWalk());const view=xr.update(dt);
   if(!renderer.xr.isPresenting&&!engine.mixerOpen&&!$('#help-dialog').open&&!$('#library').open){const f=Number(keys.has('KeyW')||keys.has('ArrowUp'))-Number(keys.has('KeyS')||keys.has('ArrowDown')),r=Number(keys.has('KeyD')||keys.has('ArrowRight'))-Number(keys.has('KeyA')||keys.has('ArrowLeft'));v.set(r,0,-f);if(v.lengthSq()){v.normalize().applyAxisAngle(new THREE.Vector3(0,1,0),camera.rotation.y).multiplyScalar(dt*2.5);camera.position.add(v);camera.position.x=THREE.MathUtils.clamp(camera.position.x,-5.35,5.35);camera.position.z=THREE.MathUtils.clamp(camera.position.z,-5.35,5.35);}}
   for(const s of sources)if(s.type==='bird'&&s.birds){
     // One bird is always nearby. Two companions visit on staggered cycles.
