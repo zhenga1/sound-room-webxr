@@ -4,3 +4,4 @@ await mkdir('dist/audio',{recursive:true});
 for(const name of audio)await copyFile(`src/audio/${name}.wav`,`dist/audio/${name}.wav`);
 await writeFile('dist/.nojekyll','');
 await copyFile('src/controls.html','dist/controls.html');
+await copyFile('PARTNER-LICENSE.txt','dist/PARTNER-LICENSE.txt');

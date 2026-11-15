@@ -2,10 +2,11 @@ import * as THREE from 'three';
 import { PublicSoundEngine } from './public-audio.js';
 import { BedroomXR } from './webxr.js';
 import {MovementInput,isEditing} from './movement-input.js';
+import {ParadisePortal} from './paradise-portal.js';
 import { catalog, bedroom, buildObject } from './objects.js';
 import { closestPointOnTrace, pointAlongTrace, traceLength, traceVisualStyle } from './traces.js';
 const $=s=>document.querySelector(s), engine=new PublicSoundEngine();
-const sources=[],traces=[],keys=new Set();let nextId=1,nextTraceId=1;
+const sources=[],traces=[],keys=new Set();let nextId=1,nextTraceId=1,paradise=null;
 const scene=new THREE.Scene(); scene.background=new THREE.Color('#172329'); scene.fog=new THREE.FogExp2('#172329',.045);
 const camera=new THREE.PerspectiveCamera(62,innerWidth/innerHeight,.08,65); camera.rotation.order='YXZ';
 const renderer=new THREE.WebGLRenderer({antialias:true}); renderer.setSize(innerWidth,innerHeight); renderer.setPixelRatio(Math.min(devicePixelRatio,2));
@@ -69,7 +70,7 @@ for(let z=-5;z<=5;z+=2.5){const curve=new THREE.EllipseCurve(0,6,5.6,3.8,0,Math.
 const ceilingLight=new THREE.PointLight('#b8d5eb',18,20);ceilingLight.position.set(0,6,-3);scene.add(ceilingLight);
 const pickables=[];
 function mount(s){
-  const group=s.group=new THREE.Group(); group.position.set(s.x,0,s.z);group.rotation.y=s.rotation||0; scene.add(group);
+  const group=s.group=new THREE.Group(); group.position.set(s.x,0,s.z);group.rotation.y=s.rotation||0; scene.add(group);paradise?.registerIndoor(group);
   const accent=mat(s.color);
   const ring=new THREE.Mesh(new THREE.TorusGeometry(s.radius,.012,8,80),new THREE.MeshBasicMaterial({color:s.color}));ring.rotation.x=Math.PI/2;ring.position.y=.09;ring.visible=!engine.mixerOpen;group.add(ring);s.ring=ring;
   if(buildObject(s,group,{box,cylinder,mat,wood,dark,ivory,metal})){} else if(s.type==='piano'){
@@ -124,7 +125,7 @@ resetCamera();
 $('#reset').onclick=()=>{clearTimeout(comparisonTimer);$('#compare').disabled=false;$('#compare').textContent='↔ Hear the before / after';for(const s of [...sources])removeObject(s,false);for(const t of [...traces])removeTrace(t,false);setDrawMode(false);for(const item of bedroom)addObject(item.type,item,false);setPreset('studio');resetCamera();saveLayout();saveTraces();toast('Bedroom restored. Add objects or draw traces to make it yours.');};
 $('#help').onclick=()=>$('#help-dialog').showModal();$('#close-help').onclick=()=>$('#help-dialog').close();
 const movement=new MovementInput(keys);
-const canWalk=()=>!renderer.xr.isPresenting&&!engine.mixerOpen&&$('#welcome').classList.contains('hidden')&&!$('#help-dialog').open&&!$('#library').open&&document.visibilityState!=='hidden'&&document.hasFocus()&&!isEditing(document.activeElement);
+const canWalk=()=>!renderer.xr.isPresenting&&!paradise?.paused&&!engine.mixerOpen&&$('#welcome').classList.contains('hidden')&&!$('#eden-dialog').open&&!$('#help-dialog').open&&!$('#library').open&&document.visibilityState!=='hidden'&&document.hasFocus()&&!isEditing(document.activeElement);
 addEventListener('keydown',e=>movement.down(e,canWalk()),true);
 addEventListener('keyup',e=>movement.up(e),true);
 const cancelMovement=()=>{movement.clear();drag=null;looking=false;};
@@ -135,7 +136,7 @@ document.addEventListener('focusin',e=>{if(isEditing(e.target))cancelMovement();
 const raycaster=new THREE.Raycaster(),pointer=new THREE.Vector2(),floor=new THREE.Plane(new THREE.Vector3(0,1,0),0),hit=new THREE.Vector3();let drag=null,looking=false,lastX=0,lastY=0;
 function ray(e){pointer.set(e.clientX/innerWidth*2-1,-e.clientY/innerHeight*2+1);raycaster.setFromCamera(pointer,camera);}
 renderer.domElement.addEventListener('contextmenu',e=>e.preventDefault());
-renderer.domElement.addEventListener('pointerdown',e=>{if(engine.mixerOpen||!$('#welcome').classList.contains('hidden'))return;if(e.button===2){looking=true;lastX=e.clientX;lastY=e.clientY;renderer.domElement.setPointerCapture(e.pointerId);return;}if(document.pointerLockElement)return;ray(e);const hits=raycaster.intersectObjects(pickables);if(hits.length){drag=hits[0].object.userData.source;renderer.domElement.setPointerCapture(e.pointerId);toast(`Moving ${drag.name}. Drag across the floor.`);}else renderer.domElement.requestPointerLock?.()?.catch?.(()=>toast('Hold right mouse and drag to look around.'));});
+renderer.domElement.addEventListener('pointerdown',e=>{if(engine.mixerOpen||!$('#welcome').classList.contains('hidden'))return;ray(e);const portal=raycaster.intersectObjects(paradise?.hits||[])[0];if(portal){portal.object.userData.portal();return;}if(e.button===2){looking=true;lastX=e.clientX;lastY=e.clientY;renderer.domElement.setPointerCapture(e.pointerId);return;}if(document.pointerLockElement)return;ray(e);const hits=raycaster.intersectObjects(pickables);if(hits.length){drag=hits[0].object.userData.source;renderer.domElement.setPointerCapture(e.pointerId);toast(`Moving ${drag.name}. Drag across the floor.`);}else renderer.domElement.requestPointerLock?.()?.catch?.(()=>toast('Hold right mouse and drag to look around.'));});
 addEventListener('pointermove',e=>{if(engine.mixerOpen)return;if(document.pointerLockElement===renderer.domElement){camera.rotation.y-=e.movementX*.002;camera.rotation.x=THREE.MathUtils.clamp(camera.rotation.x-e.movementY*.002,-1.1,1.1);}else if(looking){camera.rotation.y-=(e.clientX-lastX)*.004;camera.rotation.x=THREE.MathUtils.clamp(camera.rotation.x-(e.clientY-lastY)*.004,-1.1,1.1);lastX=e.clientX;lastY=e.clientY;}else if(drag){ray(e);if(raycaster.ray.intersectPlane(floor,hit))move(drag,hit.x,hit.z);}});
 addEventListener('pointerup',()=>{drag=null;looking=false;});document.addEventListener('pointerlockchange',()=>{document.body.classList.toggle('locked',document.pointerLockElement===renderer.domElement);keys.clear();});
 const traceChoices=catalog.filter(item=>item.sound);
@@ -280,7 +281,7 @@ map.addEventListener('pointercancel',()=>{if(draft){unmountTraceVisual(draft);dr
 addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
 const clock=new THREE.Clock(),v=new THREE.Vector3(),proj=new THREE.Vector3();let elapsed=0;
 function frame(){const dt=Math.min(clock.getDelta(),.05);elapsed+=dt;movement.tick(canWalk());const view=xr.update(dt);
-  if(!renderer.xr.isPresenting&&!engine.mixerOpen&&!$('#help-dialog').open&&!$('#library').open){const f=Number(keys.has('KeyW')||keys.has('ArrowUp'))-Number(keys.has('KeyS')||keys.has('ArrowDown')),r=Number(keys.has('KeyD')||keys.has('ArrowRight'))-Number(keys.has('KeyA')||keys.has('ArrowLeft'));v.set(r,0,-f);if(v.lengthSq()){v.normalize().applyAxisAngle(new THREE.Vector3(0,1,0),camera.rotation.y).multiplyScalar(dt*2.5);camera.position.add(v);camera.position.x=THREE.MathUtils.clamp(camera.position.x,-5.35,5.35);camera.position.z=THREE.MathUtils.clamp(camera.position.z,-5.35,5.35);}}
+  if(!renderer.xr.isPresenting&&!engine.mixerOpen&&!$('#help-dialog').open&&!$('#library').open){const f=Number(keys.has('KeyW')||keys.has('ArrowUp'))-Number(keys.has('KeyS')||keys.has('ArrowDown')),r=Number(keys.has('KeyD')||keys.has('ArrowRight'))-Number(keys.has('KeyA')||keys.has('ArrowLeft'));v.set(r,0,-f);if(v.lengthSq()){v.normalize().applyAxisAngle(new THREE.Vector3(0,1,0),camera.rotation.y).multiplyScalar(dt*2.5);camera.position.add(v);const bounds=paradise.clamp(camera.position.x,camera.position.z);camera.position.x=bounds.x;camera.position.z=bounds.z;camera.position.y=1.7+paradise.height(bounds.x,bounds.z);}}
   for(const s of sources)if(s.type==='bird'&&s.birds){
     // One bird is always nearby. Two companions visit on staggered cycles.
     const present=[true,Math.sin(elapsed*.13-.7)>.15,Math.sin(elapsed*.09-2.3)>.42];
@@ -306,12 +307,14 @@ function frame(){const dt=Math.min(clock.getDelta(),.05);elapsed+=dt;movement.ti
     const bars=s.row.querySelectorAll('.meter i');bars.forEach((b,i)=>b.style.transform=`scaleY(${engine.playing&&s.sound&&!s.muted?.4+.6*Math.abs(Math.sin(elapsed*4+i*1.2)): .15})`);
   }
   $('#listener').setAttribute('transform',`translate(${100+camera.position.x*15},${100+camera.position.z*15}) rotate(${-camera.rotation.y*180/Math.PI})`);
+  paradise.update(dt,elapsed,xr,view);xr.ink.visible=!paradise.active;
   renderer.render(scene,camera);
 }
 
 function saveLayout(){try{localStorage.setItem('sound-room-pages-bedroom-v1',JSON.stringify(sources.map(s=>({type:s.type,x:s.x,z:s.z,rotation:s.rotation||0,volume:s.volume,muted:!!s.muted}))));}catch{}}
 function updateCount(){$('#object-count').textContent=String(sources.length).padStart(2,'0');}
 function addObject(type,options={},persist=true){
+  if(paradise?.active){toast('Return to the bedroom to add furnishings.');return;}
   if(sources.length>=24){toast('Room full: remove an object before adding another.');return;}
   const item=catalog.find(c=>c.type===type);if(!item)return;
   const forward=new THREE.Vector3(0,0,-2.5).applyAxisAngle(new THREE.Vector3(0,1,0),camera.rotation.y);
@@ -356,7 +359,8 @@ try{
 }catch{}
 updateTraceCount();saveTraces();
 
-const xr=new BedroomXR({scene,camera,renderer,engine,keys,pickables,catalog,soundChoices:traceChoices,toast,addObject,removeObject,move,saveLayout,setPreset,getSources:()=>sources,getTraces:()=>traces,changeTraceSound,removeTrace,getNextTraceSound:()=>$('#trace-sound').value,setNextTraceSound:sound=>{$('#trace-sound').value=sound;},toggleAudio:()=>$('#sound').click(),
+paradise=new ParadisePortal({scene,camera,door,engine,sources,toast,keys});
+const xr=new BedroomXR({getParadise:()=>paradise,getPortalTargets:()=>paradise.hits,scene,camera,renderer,engine,keys,pickables,catalog,soundChoices:traceChoices,toast,addObject,removeObject,move,saveLayout,setPreset,getSources:()=>sources,getTraces:()=>traces,changeTraceSound,removeTrace,getNextTraceSound:()=>$('#trace-sound').value,setNextTraceSound:sound=>{$('#trace-sound').value=sound;},toggleAudio:()=>$('#sound').click(),
   startAudio:async()=>{await start();if(!engine.playing)throw new Error('Audio could not start. Try Start listening first.');},
   addFloorTrace:(sound,points)=>{if(traces.length>=12){toast('Maximum of 12 sound traces.');return;}if(traceLength(points)<.55)return;addTrace({id:`trace-${nextTraceId++}`,sound,points,x:points[0][0],z:points[0][1],volume:.3,muted:false});}
 });

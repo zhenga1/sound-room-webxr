@@ -4,6 +4,12 @@ A separate, static WebXR port of the bedroom sound playground. The existing Chat
 
 **Live:** https://zhenga1.github.io/sound-room-webxr/ · **Source:** https://github.com/zhenga1/sound-room-webxr
 
+## Door to Inner Eden
+
+The original bedroom door now opens an embedded outdoor paradise without ending the VR session. Point at the door and pull the trigger, or click it on desktop. After the opening animation you enter the partner's preserved courtyard, surrounded by a shore, grove, and overlook. A marked return door at the entrance brings you back to the unchanged bedroom layout. In the headset, use the **EDEN** menu tab for Deep Calm, Quiet Wonder, Open Freedom, Energy, Nature, Dreaminess, Pause here, saving a favorite, and returning. On the flat page, **Shape your paradise** offers two personalization prompts, favorite naming and loading. Keywords select existing settings; no psychological interpretation or live world generation is performed.
+
+Courtyard geometry is adapted from Chenguang Yang's MIT-licensed `chenguang/webxr` branch of https://github.com/TheWindRider/hackathon-immerse-bay, preserving its fountain, lanterns, hedges, shrub and paving. See `PARTNER-LICENSE.txt`. The integrated public world uses original procedural waves, water and wind; the partner's standalone branch retains its existing SATIE scene and recordings. No paid audio generation was performed. The separately hosted partner page has a return link that ends VR before changing websites, as required by browser navigation; re-enter VR after that cross-site transition.
+
 **Quest controls guide:** https://zhenga1.github.io/sound-room-webxr/controls.html. Inside VR, choose **CONTROLS** in the floating menu and browse four pages with Previous / Next. The browser guide's **Open room with the in-VR guide** link opens the room with that tab selected.
 
 ## Quest controller controls

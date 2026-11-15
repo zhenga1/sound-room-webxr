@@ -54,7 +54,7 @@ export class BedroomXR {
     this.desktop={position:this.camera.position.clone(),quaternion:this.camera.quaternion.clone(),shadow:this.renderer.shadowMap.enabled};
     this.rig.position.set(this.camera.position.x,0,this.camera.position.z);this.rig.rotation.set(0,this.camera.rotation.y,0);
     this.rig.add(this.camera);this.camera.position.set(0,0,0);this.camera.quaternion.identity();this.renderer.shadowMap.enabled=false;this.renderer.xr.setFoveation(1);
-    document.body.classList.add('in-xr');document.getElementById('library').close();document.getElementById('help-dialog').close();
+    document.body.classList.add('in-xr');document.getElementById('library').close();document.getElementById('help-dialog').close();document.getElementById('eden-dialog')?.close();
     this.keys.clear();this.menuPending=true;this.syncHead();this.menuDock.visible=true;
   }
   end(){
@@ -94,8 +94,17 @@ export class BedroomXR {
     for(const child of [...this.menu.children]){child.geometry?.dispose();child.material?.dispose();this.menu.remove(child);}for(const t of this.textures)t.dispose();this.textures=[];this.buttons=[];
     const back=new THREE.Mesh(new THREE.PlaneGeometry(2.3,2.25),new THREE.MeshBasicMaterial({color:'#0d1b22',side:THREE.DoubleSide}));this.menu.add(back);
     this.label('SOUND ROOM / QUEST',0,1,2.15,.12);this.statusLabel=this.label('',0,.85,2.15,.1);
-    ['sound','traces','view','objects','controls'].forEach((panel,i)=>this.label(panel.toUpperCase(),(i-2)*.448,.67,.42,.14,()=>{this.panel=panel;this.buildMenu();},panel===this.panel?'#466338':'#1e3036'));
-    if(this.panel==='traces'){
+    ['sound','traces','view','objects','eden','controls'].forEach((panel,i)=>this.label(panel.toUpperCase(),(i-2.5)*.37,.67,.35,.14,()=>{this.panel=panel;this.buildMenu();},panel===this.panel?'#466338':'#1e3036'));
+    if(this.panel==='eden'){
+      const paradise=this.getParadise?.();
+      if(paradise){
+        if(!paradise.active)this.label('Open the bedroom door to explore Inner Eden',0,.43,2.15,.14,()=>paradise.open(true));
+        else ['calm','wonder','freedom'].forEach((name,i)=>this.label(name,(i-1)*.74,.43,.69,.14,()=>{const presets={calm:{energy:.2,nature:.6,dreaminess:.2},wonder:{energy:.45,nature:.95,dreaminess:.85},freedom:{energy:.8,nature:.45,dreaminess:.5}};paradise.set(presets[name]);this.buildMenu();}));
+        ['energy','nature','dreaminess'].forEach((key,i)=>{const y=.2-i*.24;this.label(key+' '+Math.round(paradise.eden.target[key]*100)+'%',0,y,1.2,.14);this.label('−',-.9,y,.35,.14,()=>{paradise.set({[key]:paradise.eden.target[key]-.1});this.buildMenu();});this.label('+',.9,y,.35,.14,()=>{paradise.set({[key]:paradise.eden.target[key]+.1});this.buildMenu();});});
+        this.label(paradise.paused?'Resume':'Pause here',-.75,-.55,.69,.14,()=>{paradise.paused=!paradise.paused;this.keys.clear();this.buildMenu();});
+        this.label('Save favorite',0,-.55,.69,.14,()=>paradise.favorite());this.label('Bedroom',.75,-.55,.69,.14,()=>paradise.open(false));
+      }
+    }else if(this.panel==='traces'){
       this.label('Next trace: '+this.soundChoices[this.traceSound].name,0,.44,2.15,.12);
       this.label('← Previous sound',-.57,.26,1.05,.13,()=>this.chooseNextTrace(-1));
       this.label('Next sound →',.57,.26,1.05,.13,()=>this.chooseNextTrace(1));
@@ -160,31 +169,32 @@ export class BedroomXR {
   volumeItem(item,delta){const input=item.row.querySelector('input');if(input){input.value=Math.max(0,Math.min(100,Number(input.value)+delta));input.dispatchEvent(new Event('input'));}}
   turn(angle){const head=this.syncHead().position.clone(),q=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),angle);this.rig.position.sub(head).applyQuaternion(q).add(head);this.rig.quaternion.premultiply(q);}
   dolly(distance){const head=this.syncHead(),forward=new THREE.Vector3(0,0,-1).applyQuaternion(head.quaternion);forward.y=0;forward.normalize();this.rig.position.addScaledVector(forward,distance);this.clampPosition();}
-  clampPosition(){const head=this.syncHead();this.rig.position.x+=THREE.MathUtils.clamp(head.position.x,-5.35,5.35)-head.position.x;this.rig.position.z+=THREE.MathUtils.clamp(head.position.z,-5.35,5.35)-head.position.z;}
-  hitUI(data){this.controllerRay(data);const targets=this.menu.visible?[...this.buttons]:[];if(this.menuDock.visible)targets.push(this.dockButton);this.menu.updateWorldMatrix(true,true);this.menuDock.updateWorldMatrix(true,true);return this.ray.intersectObjects(targets)[0];}
+  clampPosition(){const head=this.syncHead(),paradise=this.getParadise?.(),position=paradise?paradise.clamp(head.position.x,head.position.z):{x:THREE.MathUtils.clamp(head.position.x,-5.35,5.35),z:THREE.MathUtils.clamp(head.position.z,-5.35,5.35)};this.rig.position.x+=position.x-head.position.x;this.rig.position.z+=position.z-head.position.z;if(paradise)this.rig.position.y=paradise.height(position.x,position.z);}
+  hitUI(data){this.controllerRay(data);const targets=this.menu.visible?[...this.buttons]:[];if(this.menuDock.visible)targets.push(this.dockButton);for(const door of this.getPortalTargets?.()||[])if(door)targets.push(door);this.menu.updateWorldMatrix(true,true);this.menuDock.updateWorldMatrix(true,true);return this.ray.intersectObjects(targets)[0];}
   refreshMenu(){
     if(!this.statusLabel)return;const text=`${this.mode.toUpperCase()} | ${this.selected?.name||'No object selected'} | ${this.engine.preset} | trace: ${this.soundChoices[this.traceSound]?.name||'Bird'}`;
     const old=this.statusLabel.material.map;const texture=this.textTexture(text,'#243e43');this.statusLabel.material.map=texture;const index=this.textures.indexOf(old);if(index>=0)this.textures[index]=texture;old.dispose();
   }
   volume(delta){if(!this.selected)return;const input=this.selected.row.querySelector('input');if(input){input.value=Number(input.value)+delta;input.dispatchEvent(new Event('input'));this.refreshMenu();}}
   controllerRay(data){data.controller.updateWorldMatrix(true,false);const origin=new THREE.Vector3().setFromMatrixPosition(data.controller.matrixWorld),direction=new THREE.Vector3(0,0,-1).transformDirection(data.controller.matrixWorld);this.ray.set(origin,direction);return this.ray;}
-  floorPoint(data){const point=new THREE.Vector3();return this.controllerRay(data).ray.intersectPlane(this.floor,point)&&this.ray.ray.origin.distanceTo(point)<15&&Math.abs(point.x)<5.7&&Math.abs(point.z)<5.7?point:null;}
+  floorPoint(data){const point=new THREE.Vector3();if(!this.controllerRay(data).ray.intersectPlane(this.floor,point)||this.ray.ray.origin.distanceTo(point)>30)return null;const world=this.getParadise?.();if(world?.active){const p=world.clamp(point.x,point.z);return Math.hypot(p.x-point.x,p.z-point.z)<.2?point:null;}return Math.abs(point.x)<5.7&&Math.abs(point.z)<5.7?point:null;}
   press(data){
     const button=this.hitUI(data);
-    if(button){button.object.userData.action();return;}
+    if(button){if(button.object.userData.portal)button.object.userData.portal();else button.object.userData.action?.();return;}
     if(this.menu.visible)return;
     if(data.source?.handedness==='left'){data.teleporting=true;return;}
+    if(this.getParadise?.()?.active){this.panel='eden';this.buildMenu();this.showMenu();return;}
     if(this.mode==='move'){this.grab(data);return;}
     if(this.mode==='trace'){data.floorPoints=[];return;}
     if(this.inkPointCount>=MAX_POINTS)return;
     data.stroke={color:colors[this.color],width:this.width,points:[]};this.strokes.push(data.stroke);
   }
   grab(data){
-    if(this.menu.visible)return;this.controllerRay(data);const hit=this.ray.intersectObjects(this.pickables).find(h=>!h.object.userData.source?.removed);
+    if(this.menu.visible||this.getParadise?.()?.active)return;this.controllerRay(data);const hit=this.ray.intersectObjects(this.pickables).find(h=>!h.object.userData.source?.removed);
     if(hit){data.held=hit.object.userData.source;this.selected=data.held;this.refreshMenu();}
   }
   finish(data){
-    if(data.teleporting){const target=this.floorPoint(data);if(target){const head=this.syncHead();this.rig.position.x+=target.x-head.position.x;this.rig.position.z+=target.z-head.position.z;}data.teleporting=false;}
+    if(data.teleporting){if(!this.getParadise?.()?.paused){const target=this.floorPoint(data);if(target){const head=this.syncHead();this.rig.position.x+=target.x-head.position.x;this.rig.position.z+=target.z-head.position.z;}}data.teleporting=false;}
     if(data.floorPoints?.length>=2)this.addFloorTrace(this.soundChoices[this.traceSound].sound,data.floorPoints);data.floorPoints=null;
     if(data.stroke){if(data.stroke.points.length<2)this.strokes=this.strokes.filter(s=>s!==data.stroke);data.stroke=null;this.rebuildInk();this.saveInk();}
     if(data.held&&!data.squeeze){data.held=null;this.saveLayout();}
@@ -207,12 +217,12 @@ export class BedroomXR {
     let inkChanged=false;this.teleport.visible=false;this.tip.visible=false;
     for(const data of this.controls){
       if(!data.source)continue;const gamepad=data.source.gamepad,[x,y]=thumbstick(gamepad),left=data.source.handedness==='left';
-      if(left){const right=new THREE.Vector3().crossVectors(forward,new THREE.Vector3(0,1,0));this.rig.position.addScaledVector(forward,-y*dt*1.6).addScaledVector(right,x*dt*1.6);}
+      if(left&&!this.getParadise?.()?.paused){const right=new THREE.Vector3().crossVectors(forward,new THREE.Vector3(0,1,0));this.rig.position.addScaledVector(forward,-y*dt*1.6).addScaledVector(right,x*dt*1.6);}
       if(!left){if(Math.abs(x)<.3)this.snapReady=true;if(Math.abs(x)>.75&&this.snapReady){this.turn(-Math.sign(x)*Math.PI/6);this.snapReady=false;}}
       const buttons=gamepad?.buttons||[];for(const [index,action] of [[3,()=>this.toggleMenu()],[4,left?()=>this.undo():()=>this.toggleMenu()],[5,left?()=>{this.color=(this.color+1)%colors.length;this.tip.material.color.set(colors[this.color]);}:()=>this.cycleMode()]]){
         const pressed=!!buttons[index]?.pressed;if(pressed&&!data.buttons[index])action();data.buttons[index]=pressed;
       }
-      if(data.hover)data.hover.material.color.set('#ffffff');const hit=this.hitUI(data);data.hover=hit?.object||null;if(data.hover)data.hover.material.color.set('#d6f48a');
+      if(data.hover)data.hover.material.color.copy(data.hover.userData.baseTint||new THREE.Color('#ffffff'));const hit=this.hitUI(data);data.hover=hit?.object||null;if(data.hover){data.hover.userData.baseTint??=data.hover.material.color.clone();data.hover.material.color.set('#d6f48a');}
       data.beam.scale.z=hit?hit.distance:4;data.beam.position.z=-data.beam.scale.z/2;
       if(!left){this.cursor.visible=true;this.cursor.position.copy(hit?hit.point:this.ray.ray.at(2,new THREE.Vector3()));}
       if(data.held&&(data.squeeze||data.trigger)&&!this.menu.visible){const point=this.floorPoint(data);if(point)this.move(data.held,point.x,point.z);}
