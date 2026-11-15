@@ -10,6 +10,8 @@ The original bedroom door now opens an embedded outdoor paradise without ending 
 
 Courtyard geometry is adapted from Chenguang Yang's MIT-licensed `chenguang/webxr` branch of https://github.com/TheWindRider/hackathon-immerse-bay, preserving its fountain, lanterns, hedges, shrub and paving. See `PARTNER-LICENSE.txt`. The integrated public world uses original procedural waves, water and wind; the partner's standalone branch retains its existing SATIE scene and recordings. No paid audio generation was performed. The separately hosted partner page has a return link that ends VR before changing websites, as required by browser navigation; re-enter VR after that cross-site transition.
 
+Dedicated courtyard effects add fountain flow and individual splashes at the basin, plus rustling at the entrance hedge, back hedge and grove canopy. Seven continuous positional layers use HRTF panning with distance falloff; Energy and Nature vary the mix, while outdoor effects fade out when returning to the bedroom. These are original procedural effects, not copied SATIE recordings.
+
 **Quest controls guide:** https://zhenga1.github.io/sound-room-webxr/controls.html. Inside VR, choose **CONTROLS** in the floating menu and browse four pages with Previous / Next. The browser guide's **Open room with the in-VR guide** link opens the room with that tab selected.
 
 ## Quest controller controls

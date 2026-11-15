@@ -57,23 +57,45 @@ export function buildParadise(scene,root){
   };
 }
 // A small procedural ambience layer supplements, rather than replaces, SATIE.
+export const courtyardSounds=[
+  {id:'shore',label:'Ocean waves',x:-9,y:1,z:5,frequency:320,type:'lowpass'},
+  {id:'stream',label:'Grove stream',x:4,y:.4,z:15,frequency:1500,type:'lowpass'},
+  {id:'wind',label:'Overlook wind',x:-8,y:1,z:21,frequency:650,type:'lowpass'},
+  {id:'fountain',label:'Fountain water and splashes',x:0,y:.85,z:6,frequency:1100,type:'bandpass'},
+  {id:'entrance-leaves',label:'Entrance hedge rustling',x:-1.55,y:.8,z:1.6,frequency:2400,type:'bandpass'},
+  {id:'back-leaves',label:'Back hedge rustling',x:0,y:.8,z:11,frequency:1900,type:'bandpass'},
+  {id:'grove-leaves',label:'Grove canopy rustling',x:4,y:2.5,z:17,frequency:2800,type:'bandpass'}
+];
 export class ParadiseAmbience{
-  constructor(){this.ctx=null;this.nodes=[];this.active=false;}
+  constructor(){this.ctx=null;this.nodes=[];this.active=false;this.volume=1;}
+  setMasterVolume(value){if(Number.isFinite(value))this.volume=THREE.MathUtils.clamp(value,0,2);}
   async start(){
     if(this.ctx){await this.ctx.resume();return;}const ctx=this.ctx=new AudioContext();await ctx.resume();
-    const buffer=ctx.createBuffer(1,ctx.sampleRate*8,ctx.sampleRate),data=buffer.getChannelData(0);let seed=81;for(let i=0;i<data.length;i++){seed=(seed*1664525+1013904223)>>>0;data[i]=(seed/4294967296)*2-1;}
-    for(const [x,z,frequency] of [[-9,5,320],[4,15,1500],[-8,21,650]]){
-      const source=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain(),pan=ctx.createPanner();source.buffer=buffer;source.loop=true;filter.type='lowpass';filter.frequency.value=frequency;gain.gain.value=0;pan.panningModel='HRTF';pan.refDistance=3;pan.maxDistance=60;pan.positionX.value=x;pan.positionY.value=1;pan.positionZ.value=z;source.connect(filter).connect(gain).connect(pan).connect(ctx.destination);source.start();this.nodes.push({gain,filter,pan});
+    this.master=ctx.createGain();this.master.gain.value=0;this.master.connect(ctx.destination);
+    const buffer=ctx.createBuffer(1,ctx.sampleRate*8,ctx.sampleRate),data=buffer.getChannelData(0);let seed=81;for(let i=0;i<data.length;i++){seed=(seed*1664525+1013904223)>>>0;const fade=Math.min(1,i/(ctx.sampleRate*.01),(data.length-i-1)/(ctx.sampleRate*.01));data[i]=((seed/4294967296)*2-1)*fade;}
+    for(const [index,definition] of courtyardSounds.entries()){
+      const {x,y,z,frequency,type}=definition;
+      const source=ctx.createBufferSource(),filter=ctx.createBiquadFilter(),gain=ctx.createGain(),pan=ctx.createPanner();source.buffer=buffer;source.loop=true;filter.type=type;filter.frequency.value=frequency;filter.Q.value=.6;gain.gain.value=0;pan.panningModel='HRTF';pan.distanceModel='inverse';pan.refDistance=definition.id==='fountain'?2:3;pan.maxDistance=60;pan.rolloffFactor=1;pan.positionX.value=x;pan.positionY.value=y;pan.positionZ.value=z;source.connect(filter).connect(gain).connect(pan).connect(this.master);source.start(0,index*.73%8);this.nodes.push({...definition,source,gain,filter,pan});
     }
   }
-  update(camera,settings,time){if(!this.ctx)return;const ctx=this.ctx,volume=this.active?1:0;
-    this.nodes.forEach((node,i)=>{const texture=i===0?.075+.025*Math.sin(time*.45):i===1?.045+settings.nature*.045:.025+settings.energy*.055;node.gain.gain.setTargetAtTime(volume*texture,ctx.currentTime,.5);});
+  update(camera,settings,time){if(!this.ctx||!this.master)return;const ctx=this.ctx,volume=this.active?1:0;
+    this.master.gain.setTargetAtTime(volume*this.volume,ctx.currentTime,.2);
+    this.nodes.forEach(node=>{
+      let texture;
+      if(node.id==='shore')texture=.075+.025*Math.sin(time*.45);
+      else if(node.id==='stream')texture=.045+settings.nature*.045;
+      else if(node.id==='wind')texture=.025+settings.energy*.055;
+      else if(node.id==='fountain')texture=(.10+settings.energy*.035)*(.8+.12*Math.sin(time*3.7)+.08*Math.sin(time*8.3));
+      else{const phase=node.x+node.z;const gust=.45+.2*Math.sin(time*(.7+settings.energy)+phase)+.15*Math.sin(time*4.7+phase);texture=(.025+settings.nature*.04+settings.energy*.04)*gust;}
+      node.gain.gain.setTargetAtTime(volume*texture,ctx.currentTime,.2);
+    });
+    if(this.active&&ctx.currentTime>=(this.nextDrop||0)){this.tone(650+(Math.sin(time*13)*.5+.5)*800,Math.sin(time*7)*.35,6+Math.cos(time*5)*.3,.013+settings.energy*.008,'drop');this.nextDrop=ctx.currentTime+.18+(1-settings.energy)*.25;}
     if(this.active&&ctx.currentTime>=(this.nextBird||0)){this.tone(1800+settings.energy*900,4,17,.012+settings.energy*.012,true);this.nextBird=ctx.currentTime+2+(1-settings.energy)*5;}
     if(this.active&&settings.dreaminess>.3&&ctx.currentTime>=(this.nextChime||0)){this.tone(520+settings.dreaminess*260,-8,21,.014,false);this.nextChime=ctx.currentTime+5;}
     const p=new THREE.Vector3(),q=new THREE.Quaternion();camera.getWorldPosition(p);camera.getWorldQuaternion(q);const f=new THREE.Vector3(0,0,-1).applyQuaternion(q),u=new THREE.Vector3(0,1,0).applyQuaternion(q),listener=ctx.listener;
     if(listener.positionX){listener.positionX.value=p.x;listener.positionY.value=p.y;listener.positionZ.value=p.z;listener.forwardX.value=f.x;listener.forwardY.value=f.y;listener.forwardZ.value=f.z;listener.upX.value=u.x;listener.upY.value=u.y;listener.upZ.value=u.z;}
   }
-  tone(frequency,x,z,volume,chirp){const ctx=this.ctx,osc=ctx.createOscillator(),gain=ctx.createGain(),pan=ctx.createPanner(),t=ctx.currentTime,duration=chirp?.25:2;osc.type='sine';osc.frequency.setValueAtTime(frequency,t);if(chirp)osc.frequency.exponentialRampToValueAtTime(frequency*1.5,t+.15);gain.gain.setValueAtTime(.0001,t);gain.gain.exponentialRampToValueAtTime(volume,t+.03);gain.gain.exponentialRampToValueAtTime(.0001,t+duration);pan.panningModel='HRTF';pan.refDistance=3;pan.positionX.value=x;pan.positionY.value=2;pan.positionZ.value=z;osc.connect(gain).connect(pan).connect(ctx.destination);osc.start();osc.stop(t+duration);osc.onended=()=>{osc.disconnect();gain.disconnect();pan.disconnect();};}
+  tone(frequency,x,z,volume,kind){const ctx=this.ctx,osc=ctx.createOscillator(),gain=ctx.createGain(),pan=ctx.createPanner(),t=ctx.currentTime,duration=kind==='drop'?.18:kind?.25:2;osc.type='sine';osc.frequency.setValueAtTime(frequency,t);if(kind)osc.frequency.exponentialRampToValueAtTime(frequency*(kind==='drop'?.48:1.5),t+duration*.7);gain.gain.setValueAtTime(.0001,t);gain.gain.exponentialRampToValueAtTime(volume,t+.012);gain.gain.exponentialRampToValueAtTime(.0001,t+duration);pan.panningModel='HRTF';pan.refDistance=3;pan.positionX.value=x;pan.positionY.value=kind==='drop'?.8:2;pan.positionZ.value=z;osc.connect(gain).connect(pan).connect(this.master);osc.start();osc.stop(t+duration);osc.onended=()=>{osc.disconnect();gain.disconnect();pan.disconnect();};}
 }
 export function createDoor(root,{x=0,z=-2,title='Return to bedroom',onOpen=()=>{}}={}){
   const group=new THREE.Group();group.position.set(x,0,z);root.add(group);const wood=new THREE.MeshStandardMaterial({color:'#b09266'}),leaf=new THREE.Group();leaf.position.x=-.65;group.add(leaf);
