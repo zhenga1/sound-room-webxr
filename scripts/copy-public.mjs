@@ -3,3 +3,4 @@ const audio=['bird','clock','fan','books','pages','piano','rain','record','tv','
 await mkdir('dist/audio',{recursive:true});
 for(const name of audio)await copyFile(`src/audio/${name}.wav`,`dist/audio/${name}.wav`);
 await writeFile('dist/.nojekyll','');
+await copyFile('src/controls.html','dist/controls.html');

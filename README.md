@@ -4,6 +4,8 @@ A separate, static WebXR port of the bedroom sound playground. The existing Chat
 
 **Live:** https://zhenga1.github.io/sound-room-webxr/ · **Source:** https://github.com/zhenga1/sound-room-webxr
 
+**Quest controls guide:** https://zhenga1.github.io/sound-room-webxr/controls.html. Inside VR, choose **CONTROLS** in the floating menu and browse four pages with Previous / Next. The browser guide's **Open room with the in-VR guide** link opens the room with that tab selected.
+
 ## Quest controller controls
 
 | Control | Action |

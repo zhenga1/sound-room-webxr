@@ -52,6 +52,14 @@ test('sound panel provides mute and volume controls for room sources',()=>{
  app.buttons.find(b=>b.userData.label==='Mute').userData.action();assert.equal(muted,true);
  app.buttons.find(b=>b.userData.label==='+').userData.action();assert.equal(input.value,40);
 });
+test('in-headset controls guide navigates all four pages',()=>{
+ const app=setup();app.panel='controls';app.buildMenu();
+ assert.ok(app.menu.children.some(m=>m.userData.label==='1 / MOVE & LOOK'));
+ app.buttons.find(b=>b.userData.label==='Next →').userData.action();assert.equal(app.helpPage,1);
+ app.buttons.find(b=>b.userData.label==='← Previous').userData.action();assert.equal(app.helpPage,0);
+ app.buttons.find(b=>b.userData.label==='← Previous').userData.action();assert.equal(app.helpPage,3);
+ assert.ok(app.menu.children.some(m=>m.userData.label==='4 / SOUNDS & RECOVERY'));
+});
 test('public build uses relative URLs and contains all clips',()=>{
  if(!existsSync('dist/index.html'))return;
  const html=readFileSync('dist/index.html','utf8');assert.ok(!html.includes('src="/assets/'));

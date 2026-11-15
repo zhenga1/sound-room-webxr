@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import {thumbstick,samplePoint,validStroke} from './xr-math.js';
+import {controlPages} from './controls-guide.js';
 const colors=['#d6f48a','#8dc8e8','#f4b879','#f2a4cc','#ffffff'];
 const MAX_POINTS=4096;
 export class BedroomXR {
   constructor(api){
-    Object.assign(this,api);this.mode='draw';this.color=0;this.width=.012;this.strokes=[];this.selected=null;this.controls=[];this.menuPage=0;this.soundPage=0;this.panel='sound';this.snapReady=true;
+    Object.assign(this,api);this.mode='draw';this.color=0;this.width=.012;this.strokes=[];this.selected=null;this.controls=[];this.menuPage=0;this.soundPage=0;this.helpPage=0;this.panel=new URLSearchParams(globalThis.location?.search||'').has('controls')?'controls':'sound';this.snapReady=true;
     this.rig=new THREE.Group();this.scene.add(this.rig);this.ray=new THREE.Raycaster();this.floor=new THREE.Plane(new THREE.Vector3(0,1,0),0);
     this.worldHead=new THREE.PerspectiveCamera();this.position=new THREE.Vector3();this.rotation=new THREE.Quaternion();this.scale=new THREE.Vector3();
     this.renderer.xr.enabled=true;this.renderer.xr.setReferenceSpaceType('local-floor');this.renderer.xr.setFramebufferScaleFactor(.85);
@@ -84,8 +85,13 @@ export class BedroomXR {
     for(const child of [...this.menu.children]){child.geometry?.dispose();child.material?.dispose();this.menu.remove(child);}for(const t of this.textures)t.dispose();this.textures=[];this.buttons=[];
     const back=new THREE.Mesh(new THREE.PlaneGeometry(2.3,2.25),new THREE.MeshBasicMaterial({color:'#0d1b22',side:THREE.DoubleSide}));this.menu.add(back);
     this.label('SOUND ROOM / QUEST',0,1,2.15,.12);this.statusLabel=this.label('',0,.85,2.15,.1);
-    ['sound','view','objects'].forEach((panel,i)=>this.label(panel.toUpperCase(),(i-1)*.75,.67,.7,.14,()=>{this.panel=panel;this.buildMenu();},panel===this.panel?'#466338':'#1e3036'));
-    if(this.panel==='sound'){
+    ['sound','view','objects','controls'].forEach((panel,i)=>this.label(panel.toUpperCase(),(i-1.5)*.56,.67,.53,.14,()=>{this.panel=panel;this.buildMenu();},panel===this.panel?'#466338':'#1e3036'));
+    if(this.panel==='controls'){
+      const page=controlPages[this.helpPage];this.label(page.title,0,.44,2.15,.13,undefined,'#304d35');
+      page.lines.forEach((line,i)=>this.label(line,0,.24-i*.16,2.15,.12));
+      this.label('← Previous',-.57,-.59,1.05,.14,()=>{this.helpPage=(this.helpPage+controlPages.length-1)%controlPages.length;this.buildMenu();});
+      this.label('Next →',.57,-.59,1.05,.14,()=>{this.helpPage=(this.helpPage+1)%controlPages.length;this.buildMenu();});
+    }else if(this.panel==='sound'){
       const entries=this.soundEntries(),pages=Math.max(1,Math.ceil(entries.length/4));this.soundPage%=pages;
       entries.slice(this.soundPage*4,this.soundPage*4+4).forEach((item,i)=>{
         const y=.43-i*.25,input=item.row.querySelector('input'),percent=input?input.value:0;
