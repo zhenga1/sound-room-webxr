@@ -20,7 +20,9 @@ A separate, static WebXR port of the bedroom sound playground. The existing Chat
 | Left X | Undo last ink stroke; restore last cleared batch when no ink remains |
 | Left Y | Change ink color |
 
-The floating menu adds bedroom objects, cycles catalog pages, adjusts selected object volume, mutes/removes/rotates objects, switches Studio/Cathedral, and undoes/clears ink. Its Color / sound button cycles both ink color and the selected floor-trace sound. Close the menu to walk or draw. To select an object, grip it with the ray, then open the menu to edit it.
+The floating menu has **SOUND**, **VIEW**, and **OBJECTS** tabs. SOUND lists placed sound sources and floor traces, with mute and volume controls for each. VIEW provides turn left/right, closer/further (VR zoom by movement), menu sizing, recentering, and ink undo/clear. OBJECTS adds, rotates, and removes furnishings and switches Studio/Cathedral. Its Color / sound button cycles both ink color and the selected floor-trace sound.
+
+Movement and turning work even while the menu is open. **A or either thumbstick click** brings the menu back. A persistent **MENU / SOUNDS** target appears at the lower left of your view; point either controller at it and pull the trigger to reopen/recenter the sound panel without a face-button shortcut. A white reticle shows the right controller's current target. Close the menu to draw or grip objects. In VR, view zoom moves you closer/further; it does not change the headset's field of view.
 
 Ink has five colors, a 4,096-point total budget and 256-point per-stroke limit. Two or more points create a stroke. Strokes, room layout and floor traces save in browser-local storage on the headset; these do not sync to the original site or another device. Room contents can be reset using the desktop room controls; ink has its own clear/undo controls.
 

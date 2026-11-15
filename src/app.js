@@ -346,7 +346,7 @@ try{
 }catch{}
 updateTraceCount();saveTraces();
 
-const xr=new BedroomXR({scene,camera,renderer,engine,keys,pickables,catalog,soundChoices:traceChoices,toast,addObject,removeObject,move,saveLayout,setPreset,
+const xr=new BedroomXR({scene,camera,renderer,engine,keys,pickables,catalog,soundChoices:traceChoices,toast,addObject,removeObject,move,saveLayout,setPreset,getSources:()=>sources,getTraces:()=>traces,toggleAudio:()=>$('#sound').click(),
   startAudio:async()=>{await start();if(!engine.playing)throw new Error('Audio could not start. Try Start listening first.');},
   addFloorTrace:(sound,points)=>{if(traces.length>=12){toast('Maximum of 12 sound traces.');return;}if(traceLength(points)<.55)return;addTrace({id:`trace-${nextTraceId++}`,sound,points,x:points[0][0],z:points[0][1],volume:.3,muted:false});}
 });
