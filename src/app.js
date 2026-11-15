@@ -214,6 +214,7 @@ function changeTraceSound(t,sound){
   t.row.style.setProperty('--c',traceColor(sound));
   t.row.querySelector('strong').textContent=`${item.name} trace`;
   t.row.querySelector('select').setAttribute('aria-label',`Sound for ${item.name} trace`);
+  t.row.querySelector('select').value=sound;
   t.row.querySelector('.trace-delete').setAttribute('aria-label',`Delete ${item.name} trace`);
   t.row.querySelector('.trace-mute').setAttribute('aria-label',`${t.muted?'Unmute':'Mute'} ${item.name} trace`);
   t.row.querySelector('input').setAttribute('aria-label',`${item.name} trace volume`);
@@ -223,7 +224,7 @@ function changeTraceSound(t,sound){
 function mountTraceRow(t){
   const item=traceChoices.find(item=>item.sound===t.sound);
   const row=t.row=document.createElement('div');row.className='trace-row';row.setAttribute('role','listitem');row.style.setProperty('--c',traceColor(t.sound));
-  row.innerHTML=`<div class="trace-row-head"><span class="trace-number"></span><span class="trace-swatch"></span><strong>${item.name} trace</strong><button class="trace-delete" aria-label="Delete ${item.name} trace">Delete</button></div><label class="trace-source">Sound <select aria-label="Sound for ${item.name} trace"></select></label><div class="trace-row-controls"><button class="trace-mute" aria-label="${t.muted?'Unmute':'Mute'} ${item.name} trace">${t.muted?'Unmute':'Mute'}</button><label>Volume <input type="range" min="0" max="100" value="${Math.round(t.volume*100)}" aria-label="${item.name} trace volume"></label><button class="trace-redraw">Redraw</button></div>`;
+  row.innerHTML=`<div class="trace-row-head"><span class="trace-number"></span><span class="trace-swatch"></span><strong>${item.name} trace</strong><button class="trace-delete" aria-label="Delete ${item.name} trace">Delete</button></div><label class="trace-source">Sound for this trace <select aria-label="Sound for ${item.name} trace"></select></label><div class="trace-row-controls"><button class="trace-mute" aria-label="${t.muted?'Unmute':'Mute'} ${item.name} trace">${t.muted?'Unmute':'Mute'}</button><label>Volume <input type="range" min="0" max="100" value="${Math.round(t.volume*100)}" aria-label="${item.name} trace volume"></label><button class="trace-redraw">Redraw</button></div>`;
   const select=row.querySelector('select');for(const choice of traceChoices){const option=document.createElement('option');option.value=choice.sound;option.textContent=choice.name;select.append(option);}select.value=t.sound;
   select.onchange=e=>changeTraceSound(t,e.target.value);
   row.querySelector('.trace-delete').onclick=()=>removeTrace(t);
@@ -355,7 +356,7 @@ try{
 }catch{}
 updateTraceCount();saveTraces();
 
-const xr=new BedroomXR({scene,camera,renderer,engine,keys,pickables,catalog,soundChoices:traceChoices,toast,addObject,removeObject,move,saveLayout,setPreset,getSources:()=>sources,getTraces:()=>traces,toggleAudio:()=>$('#sound').click(),
+const xr=new BedroomXR({scene,camera,renderer,engine,keys,pickables,catalog,soundChoices:traceChoices,toast,addObject,removeObject,move,saveLayout,setPreset,getSources:()=>sources,getTraces:()=>traces,changeTraceSound,removeTrace,getNextTraceSound:()=>$('#trace-sound').value,setNextTraceSound:sound=>{$('#trace-sound').value=sound;},toggleAudio:()=>$('#sound').click(),
   startAudio:async()=>{await start();if(!engine.playing)throw new Error('Audio could not start. Try Start listening first.');},
   addFloorTrace:(sound,points)=>{if(traces.length>=12){toast('Maximum of 12 sound traces.');return;}if(traceLength(points)<.55)return;addTrace({id:`trace-${nextTraceId++}`,sound,points,x:points[0][0],z:points[0][1],volume:.3,muted:false});}
 });

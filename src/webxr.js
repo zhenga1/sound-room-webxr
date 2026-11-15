@@ -5,7 +5,7 @@ const colors=['#d6f48a','#8dc8e8','#f4b879','#f2a4cc','#ffffff'];
 const MAX_POINTS=4096;
 export class BedroomXR {
   constructor(api){
-    Object.assign(this,api);this.mode='draw';this.color=0;this.width=.012;this.strokes=[];this.selected=null;this.controls=[];this.menuPage=0;this.soundPage=0;this.helpPage=0;this.panel=new URLSearchParams(globalThis.location?.search||'').has('controls')?'controls':'sound';this.snapReady=true;
+    Object.assign(this,api);this.mode='draw';this.color=0;this.width=.012;this.strokes=[];this.selected=null;this.controls=[];this.menuPage=0;this.soundPage=0;this.tracePage=0;this.helpPage=0;this.panel=new URLSearchParams(globalThis.location?.search||'').has('controls')?'controls':'sound';this.snapReady=true;
     this.rig=new THREE.Group();this.scene.add(this.rig);this.ray=new THREE.Raycaster();this.floor=new THREE.Plane(new THREE.Vector3(0,1,0),0);
     this.worldHead=new THREE.PerspectiveCamera();this.position=new THREE.Vector3();this.rotation=new THREE.Quaternion();this.scale=new THREE.Vector3();
     this.renderer.xr.enabled=true;this.renderer.xr.setReferenceSpaceType('local-floor');this.renderer.xr.setFramebufferScaleFactor(.85);
@@ -13,7 +13,7 @@ export class BedroomXR {
     this.buttons=[];this.textures=[];this.buildMenu();
     // A persistent, ray-clickable menu target remains available when the main panel is closed.
     this.menuDock=new THREE.Group();this.scene.add(this.menuDock);this.menuDock.visible=false;
-    const dock=new THREE.Mesh(new THREE.PlaneGeometry(.3,.09),new THREE.MeshBasicMaterial({map:this.textTexture('MENU / SOUNDS','#466338'),side:THREE.DoubleSide,depthTest:false}));
+    const dock=new THREE.Mesh(new THREE.PlaneGeometry(.36,.09),new THREE.MeshBasicMaterial({map:this.textTexture('MENU / SOUNDS','#466338','#e9eee5',.36,.09),side:THREE.DoubleSide,depthTest:false}));
     dock.renderOrder=100;dock.userData.action=()=>{this.panel='sound';this.buildMenu();this.showMenu();};this.menuDock.add(dock);this.dockButton=dock;
     this.cursor=new THREE.Mesh(new THREE.SphereGeometry(.012,10,8),new THREE.MeshBasicMaterial({color:'#ffffff',depthTest:false}));this.cursor.renderOrder=101;this.scene.add(this.cursor);this.cursor.visible=false;
     this.ink=new THREE.InstancedMesh(new THREE.CylinderGeometry(1,1,1,6),new THREE.MeshBasicMaterial(),MAX_POINTS);this.ink.instanceMatrix.setUsage(THREE.DynamicDrawUsage);this.ink.count=0;this.ink.frustumCulled=false;this.scene.add(this.ink);
@@ -50,6 +50,7 @@ export class BedroomXR {
     }catch(error){this.toast(`Could not enter VR: ${error.message}`);console.error(error);}finally{button.disabled=false;}
   }
   begin(){
+    const choice=this.soundChoices.findIndex(item=>item.sound===this.getNextTraceSound?.());if(choice>=0)this.traceSound=choice;this.buildMenu();
     this.desktop={position:this.camera.position.clone(),quaternion:this.camera.quaternion.clone(),shadow:this.renderer.shadowMap.enabled};
     this.rig.position.set(this.camera.position.x,0,this.camera.position.z);this.rig.rotation.set(0,this.camera.rotation.y,0);
     this.rig.add(this.camera);this.camera.position.set(0,0,0);this.camera.quaternion.identity();this.renderer.shadowMap.enabled=false;this.renderer.xr.setFoveation(1);
@@ -72,12 +73,20 @@ export class BedroomXR {
     this.menu.rotation.set(0,Math.atan2(forward.x,forward.z)+Math.PI,0);this.menu.visible=true;this.refreshMenu();
   }
   toggleMenu(){if(this.menu.visible)this.menu.visible=false;else this.showMenu();}
-  textTexture(text,bg='#1e3036',fg='#e9eee5'){
-    const canvas=document.createElement('canvas');canvas.width=768;canvas.height=96;const context=canvas.getContext('2d');context.fillStyle=bg;context.fillRect(0,0,768,96);context.fillStyle=fg;context.textAlign='center';context.textBaseline='middle';context.font='500 32px sans-serif';context.fillText(text,384,49,744);
+  textTexture(text,bg='#1e3036',fg='#e9eee5',w=2.15,h=.1){
+    // Match texture and plane aspect ratios. Never use fillText's maxWidth,
+    // which horizontally compresses glyphs; wrap or ellipsize long labels.
+    const canvas=document.createElement('canvas');canvas.width=Math.round(w*800);canvas.height=Math.round(h*800);const context=canvas.getContext('2d');
+    const font=Math.min(38,Math.floor(canvas.height*.42)),lineHeight=font*1.15,pad=10;
+    context.fillStyle=bg;context.fillRect(0,0,canvas.width,canvas.height);context.fillStyle=fg;context.textAlign='center';context.textBaseline='middle';context.font=`500 ${font}px system-ui, sans-serif`;
+    const measure=value=>context.measureText?.(value).width??value.length*font*.55;
+    const lines=[];let line='';for(const word of text.split(' ')){const next=line?line+' '+word:word;if(line&&measure(next)>canvas.width-pad*2){lines.push(line);line=word;}else line=next;}if(line)lines.push(line);
+    const count=Math.max(1,Math.floor((canvas.height-8)/lineHeight));if(lines.length>count){lines.length=count;while(measure(lines[count-1]+'…')>canvas.width-pad*2&&lines[count-1].length)lines[count-1]=lines[count-1].slice(0,-1);lines[count-1]+='…';}
+    lines.forEach((value,i)=>context.fillText(value,canvas.width/2,canvas.height/2+(i-(lines.length-1)/2)*lineHeight));
     const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;return texture;
   }
   label(text,x,y,w,h,action,bg){
-    const texture=this.textTexture(text,bg);this.textures.push(texture);
+    const texture=this.textTexture(text,bg,'#e9eee5',w,h);this.textures.push(texture);
     const mesh=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshBasicMaterial({map:texture,side:THREE.DoubleSide}));mesh.position.set(x,y,.015);this.menu.add(mesh);
     mesh.userData.label=text;if(action){mesh.userData.action=action;this.buttons.push(mesh);}return mesh;
   }
@@ -85,8 +94,22 @@ export class BedroomXR {
     for(const child of [...this.menu.children]){child.geometry?.dispose();child.material?.dispose();this.menu.remove(child);}for(const t of this.textures)t.dispose();this.textures=[];this.buttons=[];
     const back=new THREE.Mesh(new THREE.PlaneGeometry(2.3,2.25),new THREE.MeshBasicMaterial({color:'#0d1b22',side:THREE.DoubleSide}));this.menu.add(back);
     this.label('SOUND ROOM / QUEST',0,1,2.15,.12);this.statusLabel=this.label('',0,.85,2.15,.1);
-    ['sound','view','objects','controls'].forEach((panel,i)=>this.label(panel.toUpperCase(),(i-1.5)*.56,.67,.53,.14,()=>{this.panel=panel;this.buildMenu();},panel===this.panel?'#466338':'#1e3036'));
-    if(this.panel==='controls'){
+    ['sound','traces','view','objects','controls'].forEach((panel,i)=>this.label(panel.toUpperCase(),(i-2)*.448,.67,.42,.14,()=>{this.panel=panel;this.buildMenu();},panel===this.panel?'#466338':'#1e3036'));
+    if(this.panel==='traces'){
+      this.label('Next trace: '+this.soundChoices[this.traceSound].name,0,.44,2.15,.12);
+      this.label('← Previous sound',-.57,.26,1.05,.13,()=>this.chooseNextTrace(-1));
+      this.label('Next sound →',.57,.26,1.05,.13,()=>this.chooseNextTrace(1));
+      const traces=this.getTraces?.()||[],pages=Math.max(1,Math.ceil(traces.length/2));this.tracePage%=pages;
+      traces.slice(this.tracePage*2,this.tracePage*2+2).forEach((trace,i)=>{
+        const y=.03-i*.31,index=this.tracePage*2+i+1,name=this.soundChoices.find(item=>item.sound===trace.sound)?.name||trace.sound;
+        this.label(`Trace ${index}: ${name}`,0,y,2.15,.11);
+        this.label('← Track',-.75,y-.14,.67,.12,()=>this.chooseTraceSound(trace,-1));
+        this.label('Track →',0,y-.14,.67,.12,()=>this.chooseTraceSound(trace,1));
+        this.label('Delete',.75,y-.14,.67,.12,()=>{this.removeTrace?.(trace);this.buildMenu();});
+      });
+      if(!traces.length)this.label('No saved traces. Use TRACE mode, then draw on floor.',0,-.12,2.15,.18);
+      this.label('More saved traces →',0,-.59,2.15,.13,()=>{this.tracePage=(this.tracePage+1)%pages;this.buildMenu();});
+    }else if(this.panel==='controls'){
       const page=controlPages[this.helpPage];this.label(page.title,0,.44,2.15,.13,undefined,'#304d35');
       page.lines.forEach((line,i)=>this.label(line,0,.24-i*.16,2.15,.12));
       this.label('← Previous',-.57,-.59,1.05,.14,()=>{this.helpPage=(this.helpPage+controlPages.length-1)%controlPages.length;this.buildMenu();});
@@ -125,12 +148,14 @@ export class BedroomXR {
       this.label('Studio / Cathedral',0,-.5,2.15,.14,()=>{this.setPreset(this.engine.preset==='studio'?'cathedral':'studio');this.refreshMenu();});
     }
     this.label('Mode: '+this.mode.toUpperCase(),-.75,-.78,.68,.14,()=>this.cycleMode(),'#466338');
-    this.label('Color / sound',0,-.78,.68,.14,()=>{this.color=(this.color+1)%colors.length;this.traceSound=(this.traceSound+1)%this.soundChoices.length;this.tip.material.color.set(colors[this.color]);this.refreshMenu();});
+    this.label('Ink color',0,-.78,.68,.14,()=>{this.color=(this.color+1)%colors.length;this.tip.material.color.set(colors[this.color]);this.refreshMenu();});
     this.label('Close',.75,-.78,.68,.14,()=>{this.menu.visible=false;});
     this.label('Sticks work with menu open · A / stick click: menu',0,-.96,2.15,.08);
     this.label('B: mode · X: undo · L trigger: teleport · Grip: move',0,-1.07,2.15,.08);this.refreshMenu();
   }
   soundEntries(){return [...(this.getSources?.()||[]).filter(s=>s.sound),...(this.getTraces?.()||[]).map(t=>({...t,name:(this.soundChoices.find(s=>s.sound===t.sound)?.name||t.sound)+' trace'}))];}
+  chooseNextTrace(delta){this.traceSound=(this.traceSound+delta+this.soundChoices.length)%this.soundChoices.length;this.setNextTraceSound?.(this.soundChoices[this.traceSound].sound);this.buildMenu();}
+  chooseTraceSound(trace,delta){const index=this.soundChoices.findIndex(item=>item.sound===trace.sound);const sound=this.soundChoices[(index+delta+this.soundChoices.length)%this.soundChoices.length].sound;this.changeTraceSound?.(trace,sound);this.buildMenu();}
   cycleMode(){this.mode=this.mode==='draw'?'trace':this.mode==='trace'?'move':'draw';this.buildMenu();}
   volumeItem(item,delta){const input=item.row.querySelector('input');if(input){input.value=Math.max(0,Math.min(100,Number(input.value)+delta));input.dispatchEvent(new Event('input'));}}
   turn(angle){const head=this.syncHead().position.clone(),q=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),angle);this.rig.position.sub(head).applyQuaternion(q).add(head);this.rig.quaternion.premultiply(q);}
@@ -198,7 +223,7 @@ export class BedroomXR {
         if(data.stroke&&data.trigger&&this.inkPointCount<MAX_POINTS&&Math.abs(point.x)<5.8&&Math.abs(point.z)<5.8&&point.y>.05&&point.y<8){if(samplePoint(data.stroke.points,point.toArray())){this.inkPointCount++;inkChanged=true;}}
       }
     }
-    this.clampPosition();const head=this.syncHead();this.menuDock.position.set(-.26,-.24,-.65).applyQuaternion(head.quaternion).add(head.position);this.menuDock.quaternion.copy(head.quaternion);
+    this.clampPosition();const head=this.syncHead();this.menuDock.position.set(0,-.24,-.75).applyQuaternion(head.quaternion).add(head.position);this.menuDock.quaternion.copy(head.quaternion);
     if(inkChanged)this.rebuildInk();return this.syncHead();
   }
 }

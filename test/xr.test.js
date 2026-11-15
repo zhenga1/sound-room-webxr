@@ -58,7 +58,21 @@ test('in-headset controls guide navigates all four pages',()=>{
  app.buttons.find(b=>b.userData.label==='Next →').userData.action();assert.equal(app.helpPage,1);
  app.buttons.find(b=>b.userData.label==='← Previous').userData.action();assert.equal(app.helpPage,0);
  app.buttons.find(b=>b.userData.label==='← Previous').userData.action();assert.equal(app.helpPage,3);
- assert.ok(app.menu.children.some(m=>m.userData.label==='4 / SOUNDS & RECOVERY'));
+ assert.ok(app.menu.children.some(m=>m.userData.label==='4 / SOUNDS & TRACES'));
+});
+test('menu textures keep the same aspect ratio as their geometry',()=>{
+ const app=setup();for(const mesh of app.menu.children.filter(m=>m.material.map)){
+  const {width,height}=mesh.geometry.parameters,canvas=mesh.material.map.image;assert.ok(Math.abs(canvas.width/canvas.height-width/height)<.02,mesh.userData.label);
+ }
+ assert.ok(Math.abs(app.dockButton.material.map.image.width/app.dockButton.material.map.image.height-4)<.02);
+});
+test('next trace sound and saved trace sound can be configured independently',()=>{
+ const trace={id:'t1',sound:'bird',points:[[0,0],[1,1]],row:{querySelector:()=>({value:30})}};let next=null;const originalPoints=JSON.stringify(trace.points);
+ const app=setup({getTraces:()=>[trace],setNextTraceSound:sound=>next=sound,changeTraceSound:(t,sound)=>{t.sound=sound;}});
+ app.panel='traces';app.buildMenu();const originalNext=app.traceSound;
+ app.buttons.find(b=>b.userData.label==='Track →').userData.action();assert.notEqual(trace.sound,'bird');assert.equal(app.traceSound,originalNext);assert.equal(JSON.stringify(trace.points),originalPoints);
+ const saved=trace.sound;app.buttons.find(b=>b.userData.label==='Next sound →').userData.action();assert.equal(next,app.soundChoices[app.traceSound].sound);assert.equal(trace.sound,saved);
+ const soundIndex=app.traceSound;app.buttons.find(b=>b.userData.label==='Ink color').userData.action();assert.equal(app.traceSound,soundIndex);
 });
 test('public build uses relative URLs and contains all clips',()=>{
  if(!existsSync('dist/index.html'))return;
